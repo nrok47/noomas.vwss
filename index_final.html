@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบประปา เทศบาลตำบลห้องแซง</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.10.0/dist/tabler-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+<?!= include('Style'); ?>
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="logo"><i class="ti ti-droplet"></i> ระบบประปา เทศบาลตำบลห้องแซง</div>
+    <div class="topbar-right">
+      <span class="text-muted" style="font-size:11px">บทบาท:</span>
+      <select class="role-sel" id="roleSelect" onchange="changeRole(this.value)" style="display:none">
+        <option value="operator">ผู้ปฏิบัติงาน</option>
+        <option value="supervisor">หัวหน้างาน</option>
+        <option value="admin">ผู้บริหาร</option>
+      </select>
+      <span id="roleTag" class="badge gray">ดูอย่างเดียว</span>
+      <button class="btn" onclick="refreshData()" title="รีเฟรชข้อมูล"><i class="ti ti-refresh"></i></button>
+      <button class="btn" id="loginBtn" onclick="toggleLogin()"
+        style="background:rgba(255,255,255,.2);color:#fff;border-color:rgba(255,255,255,.4)">
+        <i class="ti ti-login"></i> เข้าสู่ระบบ
+      </button>
+    </div>
+  </header>
+
+  <!-- NAV -->
+  <nav class="nav" id="mainNav">
+    <button class="nav-btn active" onclick="showPage('dashboard')" data-page="dashboard"><i class="ti ti-layout-dashboard"></i> ภาพรวม</button>
+    <button class="nav-btn" onclick="showPage('daily')" data-page="daily"><i class="ti ti-clipboard-list"></i> บันทึกรายวัน</button>
+    <button class="nav-btn" onclick="showPage('lab')" data-page="lab"><i class="ti ti-flask"></i> ผลแล็บ</button>
+    <button class="nav-btn" onclick="showPage('stations')" data-page="stations"><i class="ti ti-building"></i> ข้อมูลสถานี</button>
+    <button class="nav-btn" onclick="showPage('complaint')" data-page="complaint"><i class="ti ti-message-report"></i> ร้องเรียน</button>
+    <button class="nav-btn admin-only hidden" onclick="showPage('report')" data-page="report"><i class="ti ti-chart-bar"></i> รายงาน</button>
+    <button class="nav-btn" onclick="showPage('trend')" data-page="trend"><i class="ti ti-chart-line"></i> กราฟแนวโน้ม</button>
+    <button class="nav-btn" onclick="showPage('survey')" data-page="survey"><i class="ti ti-clipboard-check"></i> ประเมินความพึงพอใจ</button>
+    <button class="nav-btn admin-only hidden" onclick="showPage('surveyreport')" data-page="surveyreport"><i class="ti ti-report-analytics"></i> สรุปผลประเมิน</button>
+  </nav>
+
+  <!-- LOADING OVERLAY -->
+  <div id="loadingOverlay" class="loading-overlay" style="display:none">
+    <div class="spinner"></div><span>กำลังโหลดข้อมูล...</span>
+  </div>
+
+  <!-- CONTENT -->
+  <main class="content" id="contentArea">
+
+    <!-- DASHBOARD -->
+    <div id="page-dashboard">
+      <div class="grid4" id="kpiGrid">
+        <div class="kpi ok"><div class="kpi-val" id="kpi-stations">-</div><div class="kpi-lbl">สถานีทั้งหมด</div></div>
+        <div class="kpi danger"><div class="kpi-val" id="kpi-fail">-</div><div class="kpi-lbl">ผลแล็บไม่ผ่าน</div></div>
+        <div class="kpi warn"><div class="kpi-val" id="kpi-complaint">-</div><div class="kpi-lbl">ร้องเรียนค้างอยู่</div></div>
+        <div class="kpi info"><div class="kpi-val" id="kpi-households">-</div><div class="kpi-lbl">ครัวเรือนทั้งหมด</div></div>
+      </div>
+      <div class="card" id="alertCard" style="display:none">
+        <div class="card-title"><i class="ti ti-alert-triangle"></i> การแจ้งเตือน</div>
+        <div id="alertList" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title"><i class="ti ti-map-pin"></i> สถานะสถานีผลิตน้ำประปา</div>
+          <span class="text-muted" style="font-size:11px" id="dashLastUpdate"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>สถานี</th><th>ขนาด</th><th>ผู้ดูแล</th><th>คลอรีนล่าสุด</th><th>pH ล่าสุด</th><th>ศักยภาพ</th><th>ผลแล็บล่าสุด</th><th>สถานะ</th></tr></thead>
+            <tbody id="dashStationBody"><tr><td colspan="8" class="notice">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- DAILY -->
+    <div id="page-daily" class="hidden">
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title"><i class="ti ti-pencil"></i> บันทึกข้อมูลประจำวัน</div>
+          <button class="btn primary write-only" onclick="openAddDaily()"><i class="ti ti-plus"></i> บันทึกใหม่</button>
+        </div>
+        <div class="search-row">
+          <input type="date" id="dailyDateFilter" onchange="loadDailyLogs()">
+          <select id="dailyStationFilter" onchange="loadDailyLogs()"><option value="">ทุกสถานี</option></select>
+          <button class="btn" onclick="loadDailyLogs()"><i class="ti ti-refresh"></i></button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>วันที่</th><th>สถานี</th><th>คลอรีน</th><th>ต้นท่อ</th><th>ปลายท่อ</th><th>pH</th><th>สารส้ม</th><th>ปูนขาว</th><th>หมายเหตุ</th><th>บันทึกโดย</th><th></th></tr></thead>
+            <tbody id="dailyBody"><tr><td colspan="11" class="notice">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- LAB -->
+    <div id="page-lab" class="hidden">
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title"><i class="ti ti-flask"></i> ผลตรวจวิเคราะห์ทางห้องปฏิบัติการ</div>
+          <button class="btn primary write-only" onclick="openAddLab()"><i class="ti ti-plus"></i> เพิ่มผลแล็บ</button>
+        </div>
+        <div class="search-row">
+          <select id="labStationFilter" onchange="loadLabResults()"><option value="">ทุกสถานี</option></select>
+          <select id="labResultFilter" onchange="loadLabResults()">
+            <option value="">ทุกสถานะ</option><option value="ผ่าน">ผ่าน</option><option value="ไม่ผ่าน">ไม่ผ่าน</option>
+          </select>
+          <button class="btn" onclick="loadLabResults()"><i class="ti ti-refresh"></i></button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>วันที่</th><th>สถานี</th><th>ความขุ่น</th><th>pH</th><th>เหล็ก</th><th>แมงกานีส</th><th>โคลิฟอร์ม</th><th>E.coli</th><th>ผล</th><th>หมายเหตุ</th><th></th></tr></thead>
+            <tbody id="labBody"><tr><td colspan="11" class="notice">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATIONS -->
+    <div id="page-stations" class="hidden">
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title"><i class="ti ti-building"></i> ทะเบียนสถานีประปา</div>
+          <button class="btn" onclick="loadStations()"><i class="ti ti-refresh"></i> รีเฟรช</button>
+        </div>
+        <div class="search-row">
+          <input placeholder="ค้นหาสถานี / ผู้ดูแล..." id="stSearch" oninput="filterStations()">
+          <select id="stSizeFilter" onchange="filterStations()">
+            <option value="">ทุกขนาด</option>
+            <option>ขนาดกลาง</option><option>ขนาดใหญ่</option><option>ขนาดใหญ่มาก</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>ชื่อสถานี</th><th>ขนาด</th><th>อัตราผลิต</th><th>ผู้ใช้น้ำ</th><th>ผู้ดูแล</th><th>แหล่งน้ำดิบ</th><th>ศักยภาพ</th><th></th></tr></thead>
+            <tbody id="stBody"><tr><td colspan="9" class="notice">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMPLAINT -->
+    <div id="page-complaint" class="hidden">
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title"><i class="ti ti-message-report"></i> ระบบรับเรื่องร้องเรียน</div>
+          <button class="btn primary write-only" onclick="openAddComplaint()"><i class="ti ti-plus"></i> บันทึกเรื่องร้องเรียน</button>
+        </div>
+        <div class="search-row">
+          <select id="cmpStatusFilter" onchange="loadComplaints()">
+            <option value="">ทุกสถานะ</option><option>รอดำเนินการ</option><option>กำลังดำเนินการ</option><option>เสร็จสิ้น</option>
+          </select>
+          <select id="cmpTypeFilter" onchange="loadComplaints()">
+            <option value="">ทุกประเภท</option><option>คุณภาพน้ำ</option><option>แรงดันน้ำ</option><option>ท่อแตก/รั่ว</option><option>กลิ่น/สี</option><option>อื่นๆ</option>
+          </select>
+          <button class="btn" onclick="loadComplaints()"><i class="ti ti-refresh"></i></button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>วันที่</th><th>สถานี</th><th>ประเภท</th><th>รายละเอียด</th><th>ผู้ร้อง</th><th>สถานะ</th><th>ผู้รับผิดชอบ</th><th></th></tr></thead>
+            <tbody id="cmpBody"><tr><td colspan="8" class="notice">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- REPORT (admin) -->
+    <div id="page-report" class="hidden">
+      <div class="grid2">
+        <div class="card">
+          <div class="card-title" style="margin-bottom:10px"><i class="ti ti-chart-pie"></i> สรุปคุณภาพน้ำ</div>
+          <div id="reportQuality" class="notice">กำลังโหลด...</div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:10px"><i class="ti ti-users"></i> สรุปเรื่องร้องเรียน</div>
+          <div id="reportComplaint" class="notice">กำลังโหลด...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:10px"><i class="ti ti-table"></i> สถานีที่ต้องดูแลเป็นพิเศษ</div>
+        <div id="reportAlert" class="notice">กำลังโหลด...</div>
+      </div>
+    </div>
+
+    <!-- TREND CHARTS -->
+    <div id="page-trend" class="hidden">
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title"><i class="ti ti-chart-line"></i> กราฟแนวโน้มคุณภาพน้ำ (30 วันล่าสุด)</div>
+        </div>
+        <div class="search-row">
+          <select id="trendStationFilter" onchange="loadTrendCharts()" style="min-width:280px">
+            <option value="">-- เลือกสถานีที่ต้องการดู --</option>
+          </select>
+          <button class="btn" onclick="loadTrendCharts()"><i class="ti ti-refresh"></i> โหลดกราฟ</button>
+        </div>
+        <div id="trendEmpty" style="text-align:center;color:var(--text-muted);padding:40px 0">
+          <i class="ti ti-chart-line" style="font-size:40px;opacity:.3"></i>
+          <div style="margin-top:8px">เลือกสถานีเพื่อดูกราฟแนวโน้ม</div>
+        </div>
+        <div id="trendCharts" style="display:none">
+          <div id="trendSummary"></div>
+          <div style="margin-top:20px">
+            <div style="font-size:13px;font-weight:700;color:var(--gray);margin-bottom:8px">
+              <i class="ti ti-droplet"></i> แนวโน้มคลอรีน (ต้นท่อ / ปลายท่อ)
+            </div>
+            <div style="position:relative;height:260px">
+              <canvas id="chartCl"></canvas>
+            </div>
+          </div>
+          <div style="margin-top:28px">
+            <div style="font-size:13px;font-weight:700;color:var(--gray);margin-bottom:8px">
+              <i class="ti ti-flask"></i> แนวโน้ม pH
+              <span style="font-size:11px;font-weight:400;color:var(--text-muted)">
+                (เส้นปกติ: 6.5–8.5)
+              </span>
+            </div>
+            <div style="position:relative;height:220px">
+              <canvas id="chartPh"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SATISFACTION SURVEY -->
+    <div id="page-survey" class="hidden">
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title"><i class="ti ti-clipboard-check"></i> แบบประเมินความพึงพอใจผู้ใช้น้ำ</div>
+          <span class="badge info">Likert Scale 1–5</span>
+        </div>
+        <div style="background:var(--info-light);border-left:4px solid var(--info);padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:16px">
+          <i class="ti ti-info-circle"></i> 
+          <strong>เกณฑ์คะแนน:</strong> 5=พึงพอใจมากที่สุด &nbsp;|&nbsp; 4=พึงพอใจมาก &nbsp;|&nbsp; 3=ปานกลาง &nbsp;|&nbsp; 2=พึงพอใจน้อย &nbsp;|&nbsp; 1=ควรปรับปรุง
+        </div>
+
+        <!-- ข้อมูลทั่วไป -->
+        <div class="card" style="background:#f8f9fa;padding:14px;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:10px"><i class="ti ti-user"></i> ข้อมูลผู้ตอบแบบประเมิน</div>
+          <div class="form-row cols3">
+            <div class="form-group">
+              <label>สถานีประปาที่ใช้บริการ *</label>
+              <select id="sv_station"><option value="">-- เลือกสถานี --</option></select>
+            </div>
+            <div class="form-group">
+              <label>เพศ</label>
+              <select id="sv_gender">
+                <option value="">ไม่ระบุ</option>
+                <option>ชาย</option><option>หญิง</option><option>อื่นๆ</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>ช่วงอายุ</label>
+              <select id="sv_age">
+                <option value="">ไม่ระบุ</option>
+                <option>ต่ำกว่า 20 ปี</option>
+                <option>20–35 ปี</option>
+                <option>36–50 ปี</option>
+                <option>51–65 ปี</option>
+                <option>มากกว่า 65 ปี</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- ด้านที่ 1: คุณภาพน้ำ -->
+        <div class="card" style="background:#f8f9fa;padding:14px;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:12px">
+            <i class="ti ti-droplet"></i> ด้านที่ 1: คุณภาพน้ำประปา
+          </div>
+          <div id="sq1" class="survey-q" data-q="q1" data-label="น้ำประปามีสีใส ไม่มีตะกอน"></div>
+          <div id="sq2" class="survey-q" data-q="q2" data-label="น้ำประปาไม่มีกลิ่นผิดปกติ"></div>
+          <div id="sq3" class="survey-q" data-q="q3" data-label="น้ำประปาสะอาด ปลอดภัยสำหรับอุปโภค"></div>
+        </div>
+
+        <!-- ด้านที่ 2: ปริมาณและแรงดัน -->
+        <div class="card" style="background:#f8f9fa;padding:14px;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:12px">
+            <i class="ti ti-gauge"></i> ด้านที่ 2: ปริมาณและแรงดันน้ำ
+          </div>
+          <div id="sq4" class="survey-q" data-q="q4" data-label="ปริมาณน้ำเพียงพอต่อความต้องการในครัวเรือน"></div>
+          <div id="sq5" class="survey-q" data-q="q5" data-label="แรงดันน้ำเหมาะสม ไม่อ่อนหรือแรงเกินไป"></div>
+        </div>
+
+        <!-- ด้านที่ 3: ความต่อเนื่อง -->
+        <div class="card" style="background:#f8f9fa;padding:14px;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:12px">
+            <i class="ti ti-clock"></i> ด้านที่ 3: ความต่อเนื่องของการให้บริการ
+          </div>
+          <div id="sq6" class="survey-q" data-q="q6" data-label="น้ำประปาไหลต่อเนื่องตลอด 24 ชั่วโมง"></div>
+          <div id="sq7" class="survey-q" data-q="q7" data-label="เมื่อไฟฟ้าดับหรือมีปัญหา ระบบฟื้นตัวได้รวดเร็ว"></div>
+        </div>
+
+        <!-- ด้านที่ 4: ราคา -->
+        <div class="card" style="background:#f8f9fa;padding:14px;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:12px">
+            <i class="ti ti-coin"></i> ด้านที่ 4: ราคาและค่าบริการ
+          </div>
+          <div id="sq8" class="survey-q" data-q="q8" data-label="ราคาค่าน้ำประปามีความเหมาะสมกับคุณภาพที่ได้รับ"></div>
+          <div id="sq9" class="survey-q" data-q="q9" data-label="ใบแจ้งหนี้/ใบเสร็จถูกต้องและชัดเจน"></div>
+        </div>
+
+        <!-- ด้านที่ 5: การบริการ -->
+        <div class="card" style="background:#f8f9fa;padding:14px;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:12px">
+            <i class="ti ti-headset"></i> ด้านที่ 5: การบริการของเจ้าหน้าที่
+          </div>
+          <div id="sq10" class="survey-q" data-q="q10" data-label="ติดต่อเจ้าหน้าที่ได้ง่าย สะดวก"></div>
+          <div id="sq11" class="survey-q" data-q="q11" data-label="เจ้าหน้าที่แก้ไขปัญหาได้รวดเร็วเมื่อมีการแจ้ง"></div>
+          <div id="sq12" class="survey-q" data-q="q12" data-label="เจ้าหน้าที่มีความสุภาพและให้บริการด้วยความเต็มใจ"></div>
+        </div>
+
+        <!-- ด้านที่ 6: โครงสร้างพื้นฐาน -->
+        <div class="card" style="background:#f8f9fa;padding:14px;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:12px">
+            <i class="ti ti-tool"></i> ด้านที่ 6: โครงสร้างพื้นฐาน
+          </div>
+          <div id="sq13" class="survey-q" data-q="q13" data-label="ท่อน้ำประปาอยู่ในสภาพดี ไม่รั่วซึมบ่อยครั้ง"></div>
+          <div id="sq14" class="survey-q" data-q="q14" data-label="มิเตอร์น้ำทำงานได้ถูกต้องและแม่นยำ"></div>
+        </div>
+
+        <!-- ด้านที่ 7: การสื่อสาร -->
+        <div class="card" style="background:#f8f9fa;padding:14px;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:12px">
+            <i class="ti ti-speakerphone"></i> ด้านที่ 7: การสื่อสารและการรับเรื่องร้องเรียน
+          </div>
+          <div id="sq15" class="survey-q" data-q="q15" data-label="มีการแจ้งข่าวสารเมื่อน้ำจะหยุดหรือมีการซ่อมบำรุง"></div>
+          <div id="sq16" class="survey-q" data-q="q16" data-label="ช่องทางรับเรื่องร้องเรียนเข้าถึงได้ง่ายและมีผลติดตาม"></div>
+        </div>
+
+        <!-- ข้อเสนอแนะ -->
+        <div class="form-group">
+          <label>ข้อเสนอแนะเพิ่มเติม (ถ้ามี)</label>
+          <textarea id="sv_suggestion" placeholder="ความคิดเห็น ข้อเสนอแนะ หรือปัญหาที่ต้องการแจ้ง..." style="min-height:80px"></textarea>
+        </div>
+
+        <!-- Preview คะแนน -->
+        <div id="sv_preview" style="display:none;background:var(--primary-light);border-radius:8px;padding:14px;margin-bottom:14px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary)">คะแนนรวมของคุณ</div>
+          <div style="font-size:32px;font-weight:800;color:var(--primary)" id="sv_scoreDisplay">-</div>
+          <div id="sv_levelDisplay" style="font-size:13px;margin-top:4px"></div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+          <button class="btn" onclick="resetSurvey()"><i class="ti ti-refresh"></i> เริ่มใหม่</button>
+          <button class="btn primary" onclick="submitSurvey()"><i class="ti ti-send"></i> ส่งแบบประเมิน</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SURVEY REPORT (admin) -->
+    <div id="page-surveyreport" class="hidden">
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title"><i class="ti ti-report-analytics"></i> สรุปผลประเมินความพึงพอใจ</div>
+          <button class="btn" onclick="loadSurveyReport()"><i class="ti ti-refresh"></i> รีเฟรช</button>
+        </div>
+        <div id="surveyOverall" class="notice">กำลังโหลด...</div>
+        <div class="divider"></div>
+        <div class="card-title" style="margin-bottom:12px"><i class="ti ti-table"></i> รายสถานี</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>สถานี</th><th>จำนวนผู้ตอบ</th>
+              <th>ภาพรวม</th>
+              <th>คุณภาพน้ำ</th><th>ปริมาณ/แรงดัน</th><th>ต่อเนื่อง</th>
+              <th>ราคา</th><th>บริการ</th><th>โครงสร้าง</th><th>สื่อสาร</th>
+            </tr></thead>
+            <tbody id="surveyReportBody"><tr><td colspan="10" class="notice">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+        <div class="divider"></div>
+        <div class="card-title" style="margin-bottom:12px"><i class="ti ti-messages"></i> ข้อเสนอแนะล่าสุด</div>
+        <div id="surveyComments" class="notice">กำลังโหลด...</div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- MODALS -->
+<?!= include('Modals'); ?>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+const PASSWORD = "123";
+let isLoggedIn = false;
+
+let state = {
+  role: "viewer",
+  stations: [],
+  daily: [],
+  lab: [],
+  complaints: [],
+  dashboard: null,
+  currentPage: "dashboard",
+  editMode: { type: null, rowIndex: null },
+};
+
+// ══════════════════════════════════════════════════════════
+//  AUTH
+// ══════════════════════════════════════════════════════════
+function doLogin() {
+  const pass = document.getElementById("login_pass").value;
+  const role = document.getElementById("login_role").value;
+  if (pass === PASSWORD) {
+    isLoggedIn = true;
+    document.getElementById("login_err").classList.add("hidden");
+    document.getElementById("login_pass").value = "";
+    closeModal("modalLogin");
+    applyRole(role);
+    document.getElementById("roleSelect").value = role;
+    document.getElementById("loginBtn").innerHTML =
+      '<i class="ti ti-logout"></i> ออกจากระบบ';
+    toast("เข้าสู่ระบบสำเร็จ (" + document.getElementById("roleSelect").options[document.getElementById("roleSelect").selectedIndex].text + ")", "ok");
+  } else {
+    document.getElementById("login_err").classList.remove("hidden");
+    document.getElementById("login_pass").value = "";
+    document.getElementById("login_pass").focus();
+  }
+}
+
+function doLogout() {
+  isLoggedIn = false;
+  applyRole("viewer");
+  document.getElementById("roleSelect").style.display = "none";
+  document.getElementById("loginBtn").innerHTML =
+    '<i class="ti ti-login"></i> เข้าสู่ระบบ';
+  toast("ออกจากระบบแล้ว", "ok");
+}
+
+function toggleLogin() {
+  if (isLoggedIn) doLogout();
+  else openModal("modalLogin");
+}
+
+// ══════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════
+window.onload = function () {
+  const today = new Date().toISOString().split("T")[0];
+  ["d_date","l_date","c_date"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = today;
+  });
+  applyRole("viewer");
+  loadAll();
+  openModal("modalLogin");
+};
+
+function loadAll() {
+  showLoading(true);
+  call("getStations", {}, function(res) {
+    if (res.ok) {
+      state.stations = res.data;
+      populateStationSelects();
+    }
+    call("getDashboard", {}, function(d) {
+      if (d.ok) {
+        state.dashboard = d;
+        renderDashboard(d);
+      }
+      showLoading(false);
+    });
+  });
+}
+
+function refreshData() {
+  loadAll();
+  if (state.currentPage !== "dashboard") {
+    loadPageData(state.currentPage);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  ROLE & PERMISSIONS
+// ══════════════════════════════════════════════════════════
+function applyRole(role) {
+  state.role = role;
+  const tagEl = document.getElementById("roleTag");
+  const labels  = { viewer: "ดูอย่างเดียว", operator: "ผู้ปฏิบัติงาน", supervisor: "หัวหน้างาน", admin: "ผู้บริหาร" };
+  const classes = { viewer: "badge gray",    operator: "badge info",      supervisor: "badge warn",    admin: "badge danger" };
+  tagEl.className   = classes[role] || "badge gray";
+  tagEl.textContent = labels[role]  || role;
+
+  const canWrite = role !== "viewer";
+
+  // แสดง/ซ่อน role selector
+  document.getElementById("roleSelect").style.display = canWrite ? "" : "none";
+
+  // ปุ่มเพิ่มข้อมูล (class write-only)
+  document.querySelectorAll(".write-only").forEach(el => {
+    el.style.display = canWrite ? "" : "none";
+  });
+
+  // เมนูรายงาน (admin only)
+  document.querySelectorAll(".admin-only").forEach(el => {
+    el.classList.toggle("hidden", role !== "admin");
+  });
+
+  // re-render ตารางที่มีปุ่ม edit/delete
+  if (state.currentPage === "stations")  renderStations();
+  if (state.currentPage === "daily")     renderDailyTable();
+  if (state.currentPage === "lab")       renderLabTable();
+  if (state.currentPage === "complaint") renderComplaintTable();
+}
+
+function changeRole(role) {
+  // เรียกจาก dropdown (เฉพาะตอน login แล้ว)
+  if (!isLoggedIn) return;
+  applyRole(role);
+}
+
+function requireLogin(action) {
+  if (!isLoggedIn) {
+    toast("กรุณาเข้าสู่ระบบก่อนใช้งาน", "warn");
+    openModal("modalLogin");
+    return false;
+  }
+  return true;
+}
+
+// ══════════════════════════════════════════════════════════
+//  NAVIGATION
+// ══════════════════════════════════════════════════════════
+function showPage(page) {
+  document.querySelectorAll("[id^='page-']").forEach(el => el.classList.add("hidden"));
+  document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.remove("active"));
+  document.getElementById("page-" + page).classList.remove("hidden");
+  document.querySelector('[data-page="' + page + '"]').classList.add("active");
+  state.currentPage = page;
+  loadPageData(page);
+}
+
+function loadPageData(page) {
+  if (page === "dashboard") loadAll();
+  else if (page === "daily")     loadDailyLogs();
+  else if (page === "lab")       loadLabResults();
+  else if (page === "stations")  loadStations();
+  else if (page === "complaint") loadComplaints();
+  else if (page === "report")    loadReport();
+  else if (page === "trend")        initTrendPage();
+  else if (page === "survey")       initSurveyPage();
+  else if (page === "surveyreport") loadSurveyReport();
+}
+
+// ══════════════════════════════════════════════════════════
+//  DASHBOARD
+// ══════════════════════════════════════════════════════════
+function renderDashboard(d) {
+  document.getElementById("kpi-stations").textContent   = d.summary.totalStations;
+  document.getElementById("kpi-fail").textContent       = d.summary.failLabs;
+  document.getElementById("kpi-complaint").textContent  = d.summary.openComplaints;
+  document.getElementById("kpi-households").textContent = d.summary.totalHouseholds;
+  document.getElementById("dashLastUpdate").textContent = "อัปเดต: " + new Date().toLocaleTimeString("th-TH");
+
+  const alertCard = document.getElementById("alertCard");
+  const alertList = document.getElementById("alertList");
+  if (d.alerts && d.alerts.length > 0) {
+    alertCard.style.display = "";
+    alertList.innerHTML = d.alerts.map(a =>
+      '<div class="alert ' + a.level + '"><i class="ti ti-alert-circle"></i>' + a.msg + '</div>'
+    ).join("");
+  } else {
+    alertCard.style.display = "none";
+  }
+
+  const tbody = document.getElementById("dashStationBody");
+  if (!d.stations || d.stations.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="notice">ไม่พบข้อมูลสถานี</td></tr>';
+    return;
+  }
+  tbody.innerHTML = d.stations.map(function(s) {
+    const daily = s.latestDaily;
+    const lab   = s.latestLab;
+    const capClass = s.capacity === "เกินอัตราการผลิต" ? "capacity-warn" : "capacity-ok";
+    const capIcon  = s.capacity === "เกินอัตราการผลิต" ? "⚠️" : "✅";
+    let clDisplay = "-";
+    if (daily && daily.clTail) {
+      const v = parseFloat(daily.clTail);
+      const cls = isNaN(v) ? "" : (v < 0.2 ? "cl-low" : v < 0.5 ? "cl-mid" : "cl-ok");
+      clDisplay = '<span class="' + cls + '">' + daily.clTail + '</span>';
+    }
+    const phDisplay = daily ? (daily.ph || "-") : "-";
+    let labDisplay = "-";
+    if (lab) {
+      labDisplay = lab.result === "ผ่าน"
+        ? '<span class="badge ok"><i class="ti ti-check"></i> ผ่าน</span>'
+        : '<span class="badge danger"><i class="ti ti-x"></i> ไม่ผ่าน</span>';
+    }
+    const statusMap = {
+      "ปกติ":         '<span class="badge ok">ปกติ</span>',
+      "เฝ้าระวัง":    '<span class="badge warn">เฝ้าระวัง</span>',
+      "ไม่ผ่านแล็บ": '<span class="badge danger">ไม่ผ่านแล็บ</span>',
+    };
+    return '<tr><td><strong>' + s.name + '</strong></td><td>' + (s.size||"-") + '</td><td>' + (s.operator||"-") + '</td><td>' + clDisplay + '</td><td>' + phDisplay + '</td><td><span class="' + capClass + '">' + capIcon + ' ' + (s.capacity||"-") + '</span></td><td>' + labDisplay + '</td><td>' + (statusMap[s.status] || s.status) + '</td></tr>';
+  }).join("");
+}
+
+// ══════════════════════════════════════════════════════════
+//  DAILY LOGS
+// ══════════════════════════════════════════════════════════
+function loadDailyLogs() {
+  const date = document.getElementById("dailyDateFilter").value;
+  const stId = document.getElementById("dailyStationFilter").value;
+  const filter = {};
+  if (date) filter.date = date;
+  if (stId) filter.stId = stId;
+  showLoading(true);
+  call("getDailyLogs", filter, function(res) {
+    showLoading(false);
+    if (res.ok) { state.daily = res.data; renderDailyTable(); }
+    else toast("โหลดข้อมูลผิดพลาด: " + res.error, "error");
+  });
+}
+
+function renderDailyTable() {
+  const tbody = document.getElementById("dailyBody");
+  const canEdit = isLoggedIn && state.role !== "operator";
+  const canWrite = isLoggedIn;
+  if (!state.daily.length) {
+    tbody.innerHTML = '<tr><td colspan="11" class="notice">ไม่มีข้อมูล</td></tr>'; return;
+  }
+  tbody.innerHTML = state.daily.map(function(r) {
+    const clTail = parseFloat(r.clTail);
+    const clClass = isNaN(clTail) ? "" : (clTail < 0.2 ? "cl-low" : clTail < 0.5 ? "cl-mid" : "cl-ok");
+    const editBtn = canWrite
+      ? '<button class="btn sm" onclick=\'openEditDaily(' + JSON.stringify(r).replace(/'/g,"&#39;") + ')\'><i class="ti ti-pencil"></i></button>'
+      : "";
+    const delBtn = canEdit
+      ? '<button class="btn sm danger" onclick="confirmDelete(\'daily\',' + r.rowIndex + ',\'บันทึกวันที่ ' + r.date + '\')"><i class="ti ti-trash"></i></button>'
+      : "";
+    return '<tr><td>' + r.date + '</td><td>' + r.stName + '</td><td>' + (r.chlorine||"-") + '</td><td>' + (r.clHead||"-") + '</td><td><span class="' + clClass + '">' + (r.clTail||"-") + '</span></td><td>' + (r.ph||"-") + '</td><td>' + (r.alum||"-") + '</td><td>' + (r.lime||"-") + '</td><td>' + (r.note||"-") + '</td><td>' + r.recorder + '</td><td>' + editBtn + ' ' + delBtn + '</td></tr>';
+  }).join("");
+}
+
+function openAddDaily() {
+  if (!requireLogin()) return;
+  state.editMode = { type: "daily", rowIndex: null };
+  document.getElementById("modalDailyTitle").textContent = "บันทึกข้อมูลรายวัน";
+  clearForm(["d_date","d_station","d_chlorine","d_clHead","d_clTail","d_ph","d_alum","d_lime","d_note"]);
+  document.getElementById("d_date").value = new Date().toISOString().split("T")[0];
+  document.getElementById("d_warning").style.display = "none";
+  openModal("modalDaily");
+}
+
+function openEditDaily(r) {
+  if (!requireLogin()) return;
+  state.editMode = { type: "daily", rowIndex: r.rowIndex };
+  document.getElementById("modalDailyTitle").textContent = "แก้ไขบันทึกรายวัน";
+  document.getElementById("d_date").value     = r.date;
+  document.getElementById("d_station").value  = r.stId;
+  document.getElementById("d_chlorine").value = r.chlorine;
+  document.getElementById("d_clHead").value   = r.clHead;
+  document.getElementById("d_clTail").value   = r.clTail;
+  document.getElementById("d_ph").value       = r.ph;
+  document.getElementById("d_alum").value     = r.alum;
+  document.getElementById("d_lime").value     = r.lime;
+  document.getElementById("d_note").value     = r.note;
+  document.getElementById("d_warning").style.display = "none";
+  openModal("modalDaily");
+}
+
+function onDailyStationChange() { checkDailyWarnings(); }
+
+function checkDailyWarnings() {
+  const clTail = parseFloat(document.getElementById("d_clTail").value);
+  const ph     = parseFloat(document.getElementById("d_ph").value);
+  const warns  = [];
+  if (!isNaN(clTail) && clTail < 0.2) warns.push("⚠️ คลอรีนปลายท่อต่ำกว่าเกณฑ์ (&lt;0.2 mg/L)");
+  if (!isNaN(ph) && (ph < 6.5 || ph > 8.5)) warns.push("⚠️ pH อยู่นอกเกณฑ์มาตรฐาน (6.5–8.5)");
+  const warnEl = document.getElementById("d_warning");
+  if (warns.length > 0) {
+    warnEl.innerHTML = warns.map(function(w){ return '<div class="alert warn">' + w + '</div>'; }).join("");
+    warnEl.style.display = "";
+  } else {
+    warnEl.style.display = "none";
+  }
+}
+
+function saveDaily() {
+  if (!requireLogin()) return;
+  const stId = document.getElementById("d_station").value;
+  const date = document.getElementById("d_date").value;
+  if (!stId || !date) { toast("กรุณาเลือกสถานีและวันที่", "warn"); return; }
+  const st = state.stations.find(function(s){ return String(s.id) === String(stId); });
+  checkDailyWarnings();
+  const payload = {
+    date: date, stId: stId, stName: st ? st.name : "",
+    chlorine: parseFloat(document.getElementById("d_chlorine").value) || 0,
+    clHead:   document.getElementById("d_clHead").value,
+    clTail:   document.getElementById("d_clTail").value,
+    ph:       parseFloat(document.getElementById("d_ph").value) || 0,
+    alum:     parseFloat(document.getElementById("d_alum").value) || 0,
+    lime:     parseFloat(document.getElementById("d_lime").value) || 0,
+    note:     document.getElementById("d_note").value,
+    recorder: state.role === "operator" ? "ผู้ปฏิบัติงาน" : state.role === "supervisor" ? "หัวหน้างาน" : "ผู้บริหาร",
+  };
+  if (state.editMode.rowIndex) {
+    payload.rowIndex = state.editMode.rowIndex;
+    callAction("updateDailyLog", payload, "อัปเดตข้อมูลรายวันสำเร็จ", "modalDaily", loadDailyLogs);
+  } else {
+    callAction("addDailyLog", payload, "บันทึกข้อมูลรายวันสำเร็จ", "modalDaily", loadDailyLogs);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  LAB RESULTS
+// ══════════════════════════════════════════════════════════
+function loadLabResults() {
+  const stId   = document.getElementById("labStationFilter").value;
+  const result = document.getElementById("labResultFilter").value;
+  const filter = {};
+  if (stId) filter.stId = stId;
+  if (result) filter.result = result;
+  showLoading(true);
+  call("getLabResults", filter, function(res) {
+    showLoading(false);
+    if (res.ok) { state.lab = res.data; renderLabTable(); }
+    else toast("โหลดข้อมูลผิดพลาด", "error");
+  });
+}
+
+function renderLabTable() {
+  const tbody = document.getElementById("labBody");
+  const canEdit = isLoggedIn && state.role !== "operator";
+  const canWrite = isLoggedIn;
+  if (!state.lab.length) {
+    tbody.innerHTML = '<tr><td colspan="11" class="notice">ไม่มีข้อมูล</td></tr>'; return;
+  }
+  tbody.innerHTML = state.lab.map(function(r) {
+    const resultBadge = r.result === "ผ่าน"
+      ? '<span class="badge ok"><i class="ti ti-check"></i> ผ่าน</span>'
+      : '<span class="badge danger"><i class="ti ti-x"></i> ไม่ผ่าน</span>';
+    const editBtn = canWrite
+      ? '<button class="btn sm" onclick=\'openEditLab(' + JSON.stringify(r).replace(/'/g,"&#39;") + ')\'><i class="ti ti-pencil"></i></button>'
+      : "";
+    const delBtn = canEdit
+      ? '<button class="btn sm danger" onclick="confirmDelete(\'lab\',' + r.rowIndex + ',\'ผลแล็บวันที่ ' + r.date + '\')"><i class="ti ti-trash"></i></button>'
+      : "";
+    return '<tr><td>' + r.date + '</td><td>' + r.stName + '</td><td>' + r.turbidity + '</td><td>' + r.ph + '</td><td>' + r.iron + '</td><td>' + r.mn + '</td><td>' + r.coliform + '</td><td>' + r.ecoli + '</td><td>' + resultBadge + '</td><td>' + (r.note||"-") + '</td><td>' + editBtn + ' ' + delBtn + '</td></tr>';
+  }).join("");
+}
+
+function openAddLab() {
+  if (!requireLogin()) return;
+  state.editMode = { type: "lab", rowIndex: null };
+  document.getElementById("modalLabTitle").textContent = "บันทึกผลตรวจวิเคราะห์น้ำ";
+  clearForm(["l_date","l_station","l_turbidity","l_ph","l_iron","l_mn","l_coliform","l_ecoli","l_note"]);
+  document.getElementById("l_date").value = new Date().toISOString().split("T")[0];
+  openModal("modalLab");
+}
+
+function openEditLab(r) {
+  if (!requireLogin()) return;
+  state.editMode = { type: "lab", rowIndex: r.rowIndex };
+  document.getElementById("modalLabTitle").textContent = "แก้ไขผลแล็บ";
+  document.getElementById("l_date").value      = r.date;
+  document.getElementById("l_station").value   = r.stId;
+  document.getElementById("l_turbidity").value = r.turbidity;
+  document.getElementById("l_ph").value        = r.ph;
+  document.getElementById("l_iron").value      = r.iron;
+  document.getElementById("l_mn").value        = r.mn;
+  document.getElementById("l_coliform").value  = r.coliform;
+  document.getElementById("l_ecoli").value     = r.ecoli;
+  document.getElementById("l_note").value      = r.note;
+  openModal("modalLab");
+}
+
+function saveLab() {
+  if (!requireLogin()) return;
+  const stId = document.getElementById("l_station").value;
+  const date = document.getElementById("l_date").value;
+  if (!stId || !date) { toast("กรุณาเลือกสถานีและวันที่", "warn"); return; }
+  const st = state.stations.find(function(s){ return String(s.id) === String(stId); });
+  const payload = {
+    date: date, stId: stId, stName: st ? st.name : "",
+    turbidity: parseFloat(document.getElementById("l_turbidity").value) || 0,
+    ph:        parseFloat(document.getElementById("l_ph").value) || 0,
+    iron:      parseFloat(document.getElementById("l_iron").value) || 0,
+    mn:        parseFloat(document.getElementById("l_mn").value) || 0,
+    coliform:  parseFloat(document.getElementById("l_coliform").value) || 0,
+    ecoli:     parseFloat(document.getElementById("l_ecoli").value) || 0,
+    note:      document.getElementById("l_note").value,
+    recorder:  state.role,
+  };
+  if (state.editMode.rowIndex) {
+    payload.rowIndex = state.editMode.rowIndex;
+    callAction("updateLabResult", payload, "อัปเดตผลแล็บสำเร็จ", "modalLab", loadLabResults);
+  } else {
+    callAction("addLabResult", payload, "บันทึกผลแล็บสำเร็จ", "modalLab", function(res) {
+      loadLabResults();
+      if (res.result === "ไม่ผ่าน") toast("⚠️ ผลตรวจไม่ผ่านเกณฑ์! กรุณาดำเนินการแก้ไข", "warn");
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  STATIONS
+// ══════════════════════════════════════════════════════════
+function loadStations() {
+  showLoading(true);
+  call("getStations", {}, function(res) {
+    showLoading(false);
+    if (res.ok) { state.stations = res.data; populateStationSelects(); renderStations(); }
+    else toast("โหลดข้อมูลสถานีผิดพลาด", "error");
+  });
+}
+
+function renderStations() {
+  const tbody = document.getElementById("stBody");
+  const canEdit = isLoggedIn && (state.role === "supervisor" || state.role === "admin");
+  const search  = (document.getElementById("stSearch").value || "").toLowerCase();
+  const sizeF   = document.getElementById("stSizeFilter").value;
+  let data = state.stations;
+  if (search) data = data.filter(function(s){ return s.name.toLowerCase().includes(search) || (s.operator||"").toLowerCase().includes(search); });
+  if (sizeF) data = data.filter(function(s){ return s.size === sizeF; });
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="notice">ไม่พบข้อมูล</td></tr>'; return;
+  }
+  tbody.innerHTML = data.map(function(s) {
+    const capClass = s.capacity === "เกินอัตราการผลิต" ? "capacity-warn" : "capacity-ok";
+    const editBtn = canEdit
+      ? '<button class="btn sm" onclick=\'openEditStation(' + JSON.stringify(s).replace(/'/g,"&#39;") + ')\'><i class="ti ti-pencil"></i> แก้ไข</button>'
+      : '<span class="text-muted" style="font-size:11px">ดูได้อย่างเดียว</span>';
+    return '<tr><td>' + s.id + '</td><td><strong>' + s.name + '</strong><br><small class="text-muted">' + (s.moo||"") + '</small></td><td>' + (s.size||"-") + '</td><td>' + (s.rate ? s.rate + " ลบ.ม./ชม." : "-") + '</td><td>' + (s.users||"-") + ' ครัวเรือน</td><td>' + (s.operator||"-") + (s.nickname ? " (" + s.nickname + ")" : "") + '</td><td>' + (s.source||"-") + '</td><td><span class="' + capClass + '">' + (s.capacity||"-") + '</span></td><td>' + editBtn + '</td></tr>';
+  }).join("");
+}
+
+function filterStations() { renderStations(); }
+
+function openEditStation(s) {
+  if (!requireLogin()) return;
+  if (state.role === "operator") { toast("ไม่มีสิทธิ์แก้ไขข้อมูลสถานี", "warn"); return; }
+  document.getElementById("s_rowIndex").value = s.rowIndex;
+  document.getElementById("s_name").value     = s.name;
+  document.getElementById("s_operator").value = s.operator || "";
+  document.getElementById("s_nickname").value = s.nickname || "";
+  document.getElementById("s_position").value = s.position || "";
+  document.getElementById("s_source").value   = s.source   || "";
+  document.getElementById("s_backup").value   = s.backup   || "";
+  document.getElementById("s_shortage").value = s.shortage || "";
+  openModal("modalStation");
+}
+
+function saveStation() {
+  if (!requireLogin()) return;
+  const payload = {
+    rowIndex: parseInt(document.getElementById("s_rowIndex").value),
+    operator: document.getElementById("s_operator").value,
+    nickname: document.getElementById("s_nickname").value,
+    position: document.getElementById("s_position").value,
+    source:   document.getElementById("s_source").value,
+    backup:   document.getElementById("s_backup").value,
+    shortage: document.getElementById("s_shortage").value,
+  };
+  callAction("updateStation", payload, "อัปเดตข้อมูลสถานีสำเร็จ", "modalStation", loadStations);
+}
+
+// ══════════════════════════════════════════════════════════
+//  COMPLAINTS
+// ══════════════════════════════════════════════════════════
+function loadComplaints() {
+  const status = document.getElementById("cmpStatusFilter").value;
+  const type   = document.getElementById("cmpTypeFilter").value;
+  const filter = {};
+  if (status) filter.status = status;
+  if (type)   filter.type   = type;
+  showLoading(true);
+  call("getComplaints", filter, function(res) {
+    showLoading(false);
+    if (res.ok) { state.complaints = res.data; renderComplaintTable(); }
+    else toast("โหลดข้อมูลผิดพลาด", "error");
+  });
+}
+
+function renderComplaintTable() {
+  const tbody = document.getElementById("cmpBody");
+  const canEdit = isLoggedIn && state.role !== "operator";
+  const canWrite = isLoggedIn;
+  if (!state.complaints.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="notice">ไม่มีเรื่องร้องเรียน</td></tr>'; return;
+  }
+  const statusClass = { "รอดำเนินการ": "warn", "กำลังดำเนินการ": "info", "เสร็จสิ้น": "ok" };
+  tbody.innerHTML = state.complaints.map(function(r) {
+    const badge = '<span class="badge ' + (statusClass[r.status]||"gray") + '">' + r.status + '</span>';
+    const editBtn = canWrite
+      ? '<button class="btn sm" onclick=\'openEditComplaint(' + JSON.stringify(r).replace(/'/g,"&#39;") + ')\'><i class="ti ti-pencil"></i></button>'
+      : "";
+    const delBtn = canEdit
+      ? '<button class="btn sm danger" onclick="confirmDelete(\'complaint\',' + r.rowIndex + ',\'เรื่องร้องเรียน ' + r.type + '\')"><i class="ti ti-trash"></i></button>'
+      : "";
+    const detail = r.detail ? (r.detail.length > 40 ? r.detail.substring(0,40)+"..." : r.detail) : "-";
+    return '<tr><td>' + r.date + '</td><td>' + r.stName + '</td><td>' + r.type + '</td><td>' + detail + '</td><td>' + (r.reporter||"-") + '</td><td>' + badge + '</td><td>' + (r.assign||"-") + '</td><td>' + editBtn + ' ' + delBtn + '</td></tr>';
+  }).join("");
+}
+
+function openAddComplaint() {
+  if (!requireLogin()) return;
+  state.editMode = { type: "complaint", rowIndex: null };
+  document.getElementById("modalCmpTitle").textContent = "บันทึกเรื่องร้องเรียน";
+  clearForm(["c_date","c_station","c_type","c_reporter","c_detail","c_assign","c_action","c_doneDate"]);
+  document.getElementById("c_date").value   = new Date().toISOString().split("T")[0];
+  document.getElementById("c_status").value = "รอดำเนินการ";
+  openModal("modalComplaint");
+}
+
+function openEditComplaint(r) {
+  if (!requireLogin()) return;
+  state.editMode = { type: "complaint", rowIndex: r.rowIndex };
+  document.getElementById("modalCmpTitle").textContent = "แก้ไขเรื่องร้องเรียน";
+  document.getElementById("c_date").value     = r.date;
+  document.getElementById("c_station").value  = r.stId;
+  document.getElementById("c_type").value     = r.type;
+  document.getElementById("c_reporter").value = r.reporter;
+  document.getElementById("c_detail").value   = r.detail;
+  document.getElementById("c_status").value   = r.status;
+  document.getElementById("c_assign").value   = r.assign;
+  document.getElementById("c_action").value   = r.action;
+  document.getElementById("c_doneDate").value = r.doneDate || "";
+  openModal("modalComplaint");
+}
+
+function saveComplaint() {
+  if (!requireLogin()) return;
+  const stId   = document.getElementById("c_station").value;
+  const type   = document.getElementById("c_type").value;
+  const detail = document.getElementById("c_detail").value;
+  if (!stId || !type || !detail) { toast("กรุณากรอกข้อมูลที่จำเป็น", "warn"); return; }
+  const st = state.stations.find(function(s){ return String(s.id) === String(stId); });
+  const payload = {
+    date:     document.getElementById("c_date").value,
+    stId: stId, stName: st ? st.name : "",
+    type: type, detail: detail,
+    reporter: document.getElementById("c_reporter").value,
+    status:   document.getElementById("c_status").value,
+    assign:   document.getElementById("c_assign").value,
+    action:   document.getElementById("c_action").value,
+    doneDate: document.getElementById("c_doneDate").value,
+    recorder: state.role,
+  };
+  if (state.editMode.rowIndex) {
+    payload.rowIndex = state.editMode.rowIndex;
+    callAction("updateComplaint", payload, "อัปเดตเรื่องร้องเรียนสำเร็จ", "modalComplaint", loadComplaints);
+  } else {
+    callAction("addComplaint", payload, "บันทึกเรื่องร้องเรียนสำเร็จ", "modalComplaint", loadComplaints);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  REPORT (admin only)
+// ══════════════════════════════════════════════════════════
+function loadReport() {
+  call("getLabResults", {}, function(lRes) {
+    call("getComplaints", {}, function(cRes) {
+      if (lRes.ok) {
+        const total = lRes.data.length;
+        const pass  = lRes.data.filter(function(r){ return r.result === "ผ่าน"; }).length;
+        const fail  = total - pass;
+        const pct   = total > 0 ? Math.round(pass / total * 100) : 0;
+        document.getElementById("reportQuality").innerHTML =
+          '<div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px">' +
+          '<div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--primary)">' + pct + '%</div><div style="font-size:12px;color:var(--gray)">ผ่านเกณฑ์</div></div>' +
+          '<div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--danger)">' + fail + '</div><div style="font-size:12px;color:var(--gray)">ไม่ผ่าน</div></div>' +
+          '<div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--info)">' + total + '</div><div style="font-size:12px;color:var(--gray)">ตรวจทั้งหมด</div></div>' +
+          '</div><div style="font-size:12px;color:var(--gray)">ข้อมูลล่าสุด ณ ' + new Date().toLocaleDateString("th-TH") + '</div>';
+      }
+      if (cRes.ok) {
+        const total  = cRes.data.length;
+        const open   = cRes.data.filter(function(c){ return c.status === "รอดำเนินการ"; }).length;
+        const inprog = cRes.data.filter(function(c){ return c.status === "กำลังดำเนินการ"; }).length;
+        const done   = cRes.data.filter(function(c){ return c.status === "เสร็จสิ้น"; }).length;
+        document.getElementById("reportComplaint").innerHTML =
+          '<div style="display:flex;gap:24px;flex-wrap:wrap">' +
+          '<div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--warn)">' + open + '</div><div style="font-size:12px;color:var(--gray)">รอดำเนินการ</div></div>' +
+          '<div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--info)">' + inprog + '</div><div style="font-size:12px;color:var(--gray)">กำลังดำเนินการ</div></div>' +
+          '<div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--primary)">' + done + '</div><div style="font-size:12px;color:var(--gray)">เสร็จสิ้น</div></div>' +
+          '<div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--gray)">' + total + '</div><div style="font-size:12px;color:var(--gray)">รวมทั้งหมด</div></div>' +
+          '</div>';
+      }
+      if (state.dashboard && state.dashboard.stations) {
+        const alertSt = state.dashboard.stations.filter(function(s){ return s.status !== "ปกติ"; });
+        const alertEl = document.getElementById("reportAlert");
+        if (alertSt.length === 0) {
+          alertEl.innerHTML = '<div class="alert info"><i class="ti ti-check"></i> ทุกสถานีอยู่ในสถานะปกติ</div>';
+        } else {
+          alertEl.innerHTML = alertSt.map(function(s) {
+            return '<div class="alert ' + (s.status === "ไม่ผ่านแล็บ" ? "danger" : "warn") + '"><strong>' + s.name + '</strong> — ' + s.status + (s.latestLab && s.latestLab.result === "ไม่ผ่าน" ? " (ผลแล็บล่าสุด: ไม่ผ่าน)" : "") + '</div>';
+          }).join("");
+        }
+      }
+    });
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+//  SATISFACTION SURVEY
+// ══════════════════════════════════════════════════════════
+var surveyAnswers = {};
+
+var LIKERT_LABELS = ["", "ควรปรับปรุง", "พึงพอใจน้อย", "ปานกลาง", "พึงพอใจมาก", "พึงพอใจมากที่สุด"];
+var LIKERT_COLORS = ["", "#d93025", "#f29900", "#185FA5", "#1D9E75", "#157a5a"];
+
+function initSurveyPage() {
+  populateStationSelects();
+  surveyAnswers = {};
+  // สร้าง Likert Scale สำหรับทุกข้อ
+  var qIds = ["sq1","sq2","sq3","sq4","sq5","sq6","sq7","sq8","sq9","sq10","sq11","sq12","sq13","sq14","sq15","sq16"];
+  qIds.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var qKey  = el.getAttribute("data-q");
+    var label = el.getAttribute("data-label");
+    var num   = id.replace("sq","");
+    el.innerHTML =
+      '<div style="margin-bottom:14px">' +
+      '<div style="font-size:13px;margin-bottom:8px"><span style="color:var(--gray);font-size:11px;margin-right:6px">ข้อ ' + num + '</span>' + label + '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      [1,2,3,4,5].map(function(v) {
+        return '<label style="flex:1;min-width:80px;cursor:pointer">' +
+          '<input type="radio" name="' + qKey + '" value="' + v + '" onchange="onLikertChange(\'' + qKey + '\',' + v + ')" style="display:none">' +
+          '<div class="likert-btn" data-q="' + qKey + '" data-v="' + v + '" style="text-align:center;padding:8px 4px;border:2px solid var(--border);border-radius:8px;font-size:12px;transition:.15s">' +
+          '<div style="font-size:18px;font-weight:800">' + v + '</div>' +
+          '<div style="font-size:10px;color:var(--gray)">' + LIKERT_LABELS[v] + '</div>' +
+          '</div></label>';
+      }).join("") +
+      '</div></div>';
+  });
+  document.getElementById("sv_preview").style.display = "none";
+}
+
+function onLikertChange(qKey, val) {
+  surveyAnswers[qKey] = val;
+  // highlight ปุ่มที่เลือก
+  document.querySelectorAll('.likert-btn[data-q="' + qKey + '"]').forEach(function(btn) {
+    var v = parseInt(btn.getAttribute("data-v"));
+    if (v === val) {
+      btn.style.borderColor = LIKERT_COLORS[v];
+      btn.style.background  = LIKERT_COLORS[v];
+      btn.style.color       = "#fff";
+    } else {
+      btn.style.borderColor = "var(--border)";
+      btn.style.background  = "";
+      btn.style.color       = "";
+    }
+  });
+  updateSurveyPreview();
+}
+
+function updateSurveyPreview() {
+  var keys = ["q1","q2","q3","q4","q5","q6","q7","q8","q9","q10","q11","q12","q13","q14","q15","q16"];
+  var answered = keys.filter(function(k){ return surveyAnswers[k]; });
+  if (answered.length === 0) { document.getElementById("sv_preview").style.display = "none"; return; }
+  var sum = answered.reduce(function(s,k){ return s + surveyAnswers[k]; }, 0);
+  var avg = sum / keys.length; // หารด้วยทั้งหมด 16 ข้อ
+  var levelText = "";
+  var levelColor = "";
+  if (avg >= 4.5) { levelText = "🌟 พึงพอใจมากที่สุด"; levelColor = "#157a5a"; }
+  else if (avg >= 3.5) { levelText = "😊 พึงพอใจมาก"; levelColor = "#1D9E75"; }
+  else if (avg >= 2.5) { levelText = "😐 ปานกลาง"; levelColor = "#185FA5"; }
+  else if (avg >= 1.5) { levelText = "😕 พึงพอใจน้อย"; levelColor = "#f29900"; }
+  else { levelText = "😞 ควรปรับปรุง"; levelColor = "#d93025"; }
+  document.getElementById("sv_preview").style.display = "";
+  document.getElementById("sv_scoreDisplay").textContent = avg.toFixed(2) + " / 5.00 (" + answered.length + "/16 ข้อ)";
+  document.getElementById("sv_levelDisplay").innerHTML = '<span style="color:' + levelColor + ';font-weight:700">' + levelText + '</span>';
+}
+
+function submitSurvey() {
+  var stId = document.getElementById("sv_station").value;
+  if (!stId) { toast("กรุณาเลือกสถานีประปาที่ใช้บริการ", "warn"); return; }
+
+  var keys = ["q1","q2","q3","q4","q5","q6","q7","q8","q9","q10","q11","q12","q13","q14","q15","q16"];
+  var missing = keys.filter(function(k){ return !surveyAnswers[k]; });
+  if (missing.length > 0) {
+    toast("กรุณาตอบให้ครบทุกข้อ (ยังขาด " + missing.length + " ข้อ)", "warn"); return;
+  }
+
+  var st = state.stations.find(function(s){ return String(s.id) === String(stId); });
+  var payload = {
+    date:   new Date().toISOString().split("T")[0],
+    stId:   stId,
+    stName: st ? st.name : "",
+    moo:    st ? st.moo : "",
+    gender: document.getElementById("sv_gender").value,
+    age:    document.getElementById("sv_age").value,
+    suggestion: document.getElementById("sv_suggestion").value,
+  };
+  keys.forEach(function(k){ payload[k] = surveyAnswers[k]; });
+
+  showLoading(true);
+  call("addSurveyResult", payload, function(res) {
+    showLoading(false);
+    if (res.ok) {
+      toast("ขอบคุณสำหรับการประเมิน! คะแนนเฉลี่ย " + res.avg + " (" + res.level + ")", "ok");
+      resetSurvey();
+      // แสดง popup ขอบคุณ
+      setTimeout(function() {
+        document.getElementById("sv_preview").innerHTML =
+          '<div style="text-align:center;padding:20px">' +
+          '<i class="ti ti-circle-check" style="font-size:48px;color:var(--primary)"></i>' +
+          '<div style="font-size:18px;font-weight:700;margin-top:8px;color:var(--primary)">ขอบคุณสำหรับการประเมิน!</div>' +
+          '<div style="font-size:13px;color:var(--gray);margin-top:4px">คะแนนเฉลี่ย: ' + res.avg + '/5.00 — ' + res.level + '</div>' +
+          '</div>';
+        document.getElementById("sv_preview").style.display = "";
+      }, 300);
+    } else {
+      toast("บันทึกผิดพลาด: " + (res.error || "Unknown"), "error");
+    }
+  });
+}
+
+function resetSurvey() {
+  surveyAnswers = {};
+  document.querySelectorAll(".likert-btn").forEach(function(btn) {
+    btn.style.borderColor = "var(--border)";
+    btn.style.background  = "";
+    btn.style.color       = "";
+  });
+  document.querySelectorAll('input[type="radio"]').forEach(function(r){ r.checked = false; });
+  document.getElementById("sv_station").value    = "";
+  document.getElementById("sv_gender").value     = "";
+  document.getElementById("sv_age").value        = "";
+  document.getElementById("sv_suggestion").value = "";
+  document.getElementById("sv_preview").style.display = "none";
+}
+
+// ── Survey Report ──────────────────────────────────────────
+function loadSurveyReport() {
+  showLoading(true);
+  call("getSurveySummary", {}, function(res) {
+    showLoading(false);
+    if (!res.ok) { toast("โหลดข้อมูลผิดพลาด", "error"); return; }
+
+    // KPI ภาพรวม
+    var lvl = "-", lvlColor = "var(--gray)";
+    var avg = parseFloat(res.totalAvg);
+    if (avg >= 4.5) { lvl = "พึงพอใจมากที่สุด"; lvlColor = "#157a5a"; }
+    else if (avg >= 3.5) { lvl = "พึงพอใจมาก"; lvlColor = "#1D9E75"; }
+    else if (avg >= 2.5) { lvl = "ปานกลาง"; lvlColor = "#185FA5"; }
+    else if (avg >= 1.5) { lvl = "พึงพอใจน้อย"; lvlColor = "#f29900"; }
+    else if (avg > 0) { lvl = "ควรปรับปรุง"; lvlColor = "#d93025"; }
+
+    document.getElementById("surveyOverall").innerHTML =
+      '<div style="display:flex;gap:20px;flex-wrap:wrap">' +
+      '<div class="kpi info" style="flex:1;min-width:140px"><div class="kpi-val">' + res.total + '</div><div class="kpi-lbl">ผู้ตอบแบบประเมิน</div></div>' +
+      '<div class="kpi ok" style="flex:1;min-width:140px"><div class="kpi-val">' + (res.totalAvg || "-") + '</div><div class="kpi-lbl">คะแนนเฉลี่ยรวม</div></div>' +
+      '<div style="flex:2;min-width:180px;display:flex;align-items:center;justify-content:center;flex-direction:column">' +
+      '<div style="font-size:32px;font-weight:800;color:' + lvlColor + '">' + lvl + '</div>' +
+      '<div style="font-size:12px;color:var(--gray)">ระดับความพึงพอใจภาพรวม</div></div>' +
+      '</div>';
+
+    // ตารางรายสถานี
+    var tbody = document.getElementById("surveyReportBody");
+    if (!res.byStation || !res.byStation.length) {
+      tbody.innerHTML = '<tr><td colspan="10" class="notice">ไม่มีข้อมูล</td></tr>'; return;
+    }
+
+    var DIMS = ["d1","d2","d3","d4","d5","d6","d7"];
+    tbody.innerHTML = res.byStation.map(function(s) {
+      var avgVal = parseFloat(s.avg);
+      var badge = s.count > 0
+        ? ('<span class="badge ' + (avgVal >= 3.5 ? "ok" : avgVal >= 2.5 ? "info" : "warn") + '">' + s.avg + '</span>')
+        : '<span class="badge gray">ยังไม่มีข้อมูล</span>';
+      var dimCells = DIMS.map(function(d) {
+        var v = parseFloat(s[d]);
+        if (!s.count) return '<td>-</td>';
+        var color = v >= 4 ? "var(--primary)" : v >= 3 ? "var(--info)" : "var(--warn)";
+        return '<td style="color:' + color + ';font-weight:700">' + s[d] + '</td>';
+      }).join("");
+      return '<tr><td><strong>' + s.stName + '</strong></td><td>' + (s.count || 0) + ' คน</td><td>' + badge + '</td>' + dimCells + '</tr>';
+    }).join("");
+
+    // ข้อเสนอแนะ
+    call("getSurveyResults", {}, function(svRes) {
+      if (!svRes.ok) return;
+      var comments = svRes.data.filter(function(r){ return r.suggestion && r.suggestion.trim(); }).slice(0, 10);
+      var commentEl = document.getElementById("surveyComments");
+      if (!comments.length) {
+        commentEl.innerHTML = '<div class="notice">ยังไม่มีข้อเสนอแนะ</div>'; return;
+      }
+      commentEl.innerHTML = comments.map(function(r) {
+        return '<div style="padding:10px;border-left:3px solid var(--primary-light);margin-bottom:8px;background:var(--gray-light);border-radius:0 6px 6px 0">' +
+          '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">' + r.stName + ' · ' + r.date + '</div>' +
+          '<div style="font-size:13px">' + r.suggestion + '</div></div>';
+      }).join("");
+    });
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+//  TREND CHARTS
+// ══════════════════════════════════════════════════════════
+var chartCl = null;
+var chartPh = null;
+
+function initTrendPage() {
+  // populate select ถ้ายังไม่มี options
+  populateStationSelects();
+  // ถ้าเคยเลือกสถานีไว้แล้วให้โหลดกราฟเลย
+  var stId = document.getElementById("trendStationFilter").value;
+  if (stId) loadTrendCharts();
+}
+
+function loadTrendCharts() {
+  var stId = document.getElementById("trendStationFilter").value;
+  if (!stId) {
+    document.getElementById("trendEmpty").style.display = "";
+    document.getElementById("trendCharts").style.display = "none";
+    return;
+  }
+  document.getElementById("trendEmpty").style.display = "none";
+  showLoading(true);
+
+  call("getDailyLogs", { stId: stId }, function(res) {
+    showLoading(false);
+    if (!res.ok || !res.data.length) {
+      document.getElementById("trendCharts").style.display = "none";
+      document.getElementById("trendEmpty").style.display = "";
+      document.getElementById("trendEmpty").textContent = "ไม่มีข้อมูลบันทึกรายวันของสถานีนี้";
+      return;
+    }
+
+    // เรียงตามวันที่ และเอา 30 วันล่าสุด
+    var sorted = res.data.slice().sort(function(a, b){ return a.date.localeCompare(b.date); });
+    var last30 = sorted.slice(-30);
+
+    var labels   = last30.map(function(r){ return r.date.substring(5); }); // MM-DD
+    var clHead   = last30.map(function(r){ return parseFloat(r.clHead) || null; });
+    var clTail   = last30.map(function(r){ return parseFloat(r.clTail) || null; });
+    var phData   = last30.map(function(r){ return r.ph || null; });
+
+    document.getElementById("trendCharts").style.display = "";
+
+    // ── กราฟคลอรีน ──
+    var ctxCl = document.getElementById("chartCl").getContext("2d");
+    if (chartCl) chartCl.destroy();
+    chartCl = new Chart(ctxCl, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: "คลอรีนต้นท่อ (mg/L)",
+            data: clHead,
+            borderColor: "#1D9E75",
+            backgroundColor: "rgba(29,158,117,.08)",
+            borderWidth: 2,
+            pointRadius: 3,
+            tension: 0.3,
+            fill: true,
+          },
+          {
+            label: "คลอรีนปลายท่อ (mg/L)",
+            data: clTail,
+            borderColor: "#185FA5",
+            backgroundColor: "rgba(24,95,165,.08)",
+            borderWidth: 2,
+            pointRadius: 3,
+            tension: 0.3,
+            fill: true,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: "top" },
+          tooltip: { mode: "index", intersect: false },
+          annotation: {
+            annotations: {
+              minLine: {
+                type: "line",
+                yMin: 0.2, yMax: 0.2,
+                borderColor: "#d93025",
+                borderWidth: 1.5,
+                borderDash: [6, 4],
+                label: { content: "เกณฑ์ต่ำสุด 0.2", display: true, position: "end", color: "#d93025", font: { size: 10 } }
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: "mg/L" }
+          },
+          x: {
+            title: { display: true, text: "วันที่ (30 วันล่าสุด)" }
+          }
+        }
+      }
+    });
+
+    // ── กราฟ pH ──
+    var ctxPh = document.getElementById("chartPh").getContext("2d");
+    if (chartPh) chartPh.destroy();
+    chartPh = new Chart(ctxPh, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: "pH",
+            data: phData,
+            borderColor: "#f29900",
+            backgroundColor: "rgba(242,153,0,.08)",
+            borderWidth: 2,
+            pointRadius: 3,
+            tension: 0.3,
+            fill: true,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: "top" },
+          tooltip: { mode: "index", intersect: false },
+        },
+        scales: {
+          y: {
+            min: 5,
+            max: 10,
+            title: { display: true, text: "pH" },
+            ticks: {
+              callback: function(v) {
+                if (v === 6.5 || v === 8.5) return v + " ◀ เกณฑ์";
+                return v;
+              }
+            }
+          },
+          x: {
+            title: { display: true, text: "วันที่ (30 วันล่าสุด)" }
+          }
+        }
+      }
+    });
+
+    // ── สรุปสถิติ ──
+    var validCl  = clTail.filter(function(v){ return v !== null; });
+    var validPh  = phData.filter(function(v){ return v !== null; });
+    var avgCl    = validCl.length  ? (validCl.reduce(function(a,b){return a+b;},0) / validCl.length).toFixed(2)  : "-";
+    var avgPh    = validPh.length  ? (validPh.reduce(function(a,b){return a+b;},0) / validPh.length).toFixed(2)  : "-";
+    var lowCl    = validCl.filter(function(v){ return v < 0.2; }).length;
+    var outPh    = validPh.filter(function(v){ return v < 6.5 || v > 8.5; }).length;
+
+    document.getElementById("trendSummary").innerHTML =
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">' +
+      '<div class="kpi ok" style="flex:1;min-width:120px"><div class="kpi-val" style="font-size:22px">' + avgCl + '</div><div class="kpi-lbl">เฉลี่ยคลอรีนปลายท่อ</div></div>' +
+      '<div class="kpi ' + (lowCl > 0 ? "danger" : "ok") + '" style="flex:1;min-width:120px"><div class="kpi-val" style="font-size:22px">' + lowCl + '</div><div class="kpi-lbl">วันที่คลอรีนต่ำกว่าเกณฑ์</div></div>' +
+      '<div class="kpi info" style="flex:1;min-width:120px"><div class="kpi-val" style="font-size:22px">' + avgPh + '</div><div class="kpi-lbl">เฉลี่ย pH</div></div>' +
+      '<div class="kpi ' + (outPh > 0 ? "warn" : "ok") + '" style="flex:1;min-width:120px"><div class="kpi-val" style="font-size:22px">' + outPh + '</div><div class="kpi-lbl">วันที่ pH ออกนอกเกณฑ์</div></div>' +
+      '</div>';
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+//  DELETE / CONFIRM
+// ══════════════════════════════════════════════════════════
+let pendingDelete = null;
+
+function confirmDelete(type, rowIndex, label) {
+  if (!requireLogin()) return;
+  pendingDelete = { type: type, rowIndex: rowIndex };
+  document.getElementById("confirmMsg").innerHTML =
+    'คุณต้องการลบ <strong>"' + label + '"</strong> ใช่หรือไม่?<br><span style="color:var(--danger);font-size:12px">การลบไม่สามารถยกเลิกได้</span>';
+  openModal("modalConfirm");
+}
+
+function execConfirm() {
+  if (!pendingDelete) return;
+  const type     = pendingDelete.type;
+  const rowIndex = pendingDelete.rowIndex;
+  const actionMap = { daily: "deleteDailyLog", lab: "deleteLabResult", complaint: "deleteComplaint" };
+  const cbMap     = { daily: loadDailyLogs,    lab: loadLabResults,    complaint: loadComplaints };
+  closeModal("modalConfirm");
+  showLoading(true);
+  call(actionMap[type], { rowIndex: rowIndex }, function(res) {
+    showLoading(false);
+    if (res.ok) { toast("ลบข้อมูลสำเร็จ", "ok"); cbMap[type](); }
+    else toast("ลบผิดพลาด: " + res.error, "error");
+    pendingDelete = null;
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+//  UTILITIES
+// ══════════════════════════════════════════════════════════
+function populateStationSelects() {
+  var selects = ["d_station","l_station","c_station","dailyStationFilter","labStationFilter","trendStationFilter","sv_station"];
+  selects.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var isFilter = id.includes("Filter");
+    var prev = el.value;
+    el.innerHTML = isFilter ? '<option value="">ทุกสถานี</option>' : '<option value="">-- เลือกสถานี --</option>';
+    state.stations.forEach(function(s) {
+      var opt = document.createElement("option");
+      opt.value = s.id;
+      opt.textContent = s.name;
+      el.appendChild(opt);
+    });
+    if (prev) el.value = prev;
+  });
+}
+
+function call(action, payload, cb) {
+  google.script.run
+    .withSuccessHandler(cb)
+    .withFailureHandler(function(err) { showLoading(false); toast("Error: " + err.message, "error"); cb({ ok: false, error: err.message }); })
+    .apiCall(action, payload);
+}
+
+function callAction(action, payload, successMsg, modalId, cb) {
+  showLoading(true);
+  call(action, payload, function(res) {
+    showLoading(false);
+    if (res.ok) {
+      toast(successMsg, "ok");
+      closeModal(modalId);
+      if (typeof cb === "function") cb(res);
+    } else {
+      toast("ผิดพลาด: " + (res.error || "Unknown"), "error");
+    }
+  });
+}
+
+function openModal(id)  { document.getElementById(id).classList.remove("hidden"); }
+function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
+
+function clearForm(ids) {
+  ids.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+}
+
+function showLoading(show) {
+  document.getElementById("loadingOverlay").style.display = show ? "flex" : "none";
+}
+
+function toast(msg, type) {
+  var wrap = document.getElementById("toastWrap");
+  var el = document.createElement("div");
+  el.className = "toast " + (type || "ok");
+  var icon = { ok: "ti-circle-check", error: "ti-alert-circle", warn: "ti-alert-triangle" };
+  el.innerHTML = '<i class="ti ' + (icon[type] || "ti-circle-check") + '"></i> ' + msg;
+  wrap.appendChild(el);
+  setTimeout(function() { el.style.opacity = "0"; el.style.transition = ".3s"; setTimeout(function(){ el.remove(); }, 300); }, 3500);
+}
+</script>
+</body>
+</html>
