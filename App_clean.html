@@ -1,0 +1,689 @@
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+let state = {
+  role: "operator",    // operator | supervisor | admin
+  stations: [],
+  daily: [],
+  lab: [],
+  complaints: [],
+  dashboard: null,
+  currentPage: "dashboard",
+  editMode: { type: null, rowIndex: null },
+  confirmCallback: null,
+};
+
+// ══════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════
+window.onload = function () {
+  // Set today as default date
+  const today = new Date().toISOString().split("T")[0];
+  ["d_date","l_date","c_date"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = today;
+  });
+  loadAll();
+};
+
+function loadAll() {
+  showLoading(true);
+  // Load stations first, then dashboard
+  call("getStations", {}, function(res) {
+    if (res.ok) {
+      state.stations = res.data;
+      populateStationSelects();
+    }
+    call("getDashboard", {}, function(d) {
+      if (d.ok) {
+        state.dashboard = d;
+        renderDashboard(d);
+      }
+      showLoading(false);
+    });
+  });
+}
+
+function refreshData() {
+  loadAll();
+  if (state.currentPage !== "dashboard") {
+    loadPageData(state.currentPage);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  ROLE
+// ══════════════════════════════════════════════════════════
+function changeRole(role) {
+  state.role = role;
+  const tagEl = document.getElementById("roleTag");
+  const labels = { operator: "ผู้ปฏิบัติงาน", supervisor: "หัวหน้างาน", admin: "ผู้บริหาร" };
+  const classes = { operator: "badge info", supervisor: "badge warn", admin: "badge danger" };
+  tagEl.className = classes[role];
+  tagEl.textContent = labels[role];
+
+  // Show/hide admin nav
+  document.querySelectorAll(".admin-only").forEach(el => {
+    el.classList.toggle("hidden", role !== "admin");
+  });
+  // Re-render current page for permission changes
+  if (state.currentPage === "stations") renderStations();
+  if (state.currentPage === "daily") renderDailyTable();
+  if (state.currentPage === "lab") renderLabTable();
+  if (state.currentPage === "complaint") renderComplaintTable();
+}
+
+// ══════════════════════════════════════════════════════════
+//  NAVIGATION
+// ══════════════════════════════════════════════════════════
+function showPage(page) {
+  document.querySelectorAll("[id^='page-']").forEach(el => el.classList.add("hidden"));
+  document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.remove("active"));
+  document.getElementById("page-" + page).classList.remove("hidden");
+  document.querySelector(`[data-page="${page}"]`).classList.add("active");
+  state.currentPage = page;
+  loadPageData(page);
+}
+
+function loadPageData(page) {
+  if (page === "dashboard") loadAll();
+  else if (page === "daily") loadDailyLogs();
+  else if (page === "lab") loadLabResults();
+  else if (page === "stations") loadStations();
+  else if (page === "complaint") loadComplaints();
+  else if (page === "report") loadReport();
+}
+
+// ══════════════════════════════════════════════════════════
+//  DASHBOARD
+// ══════════════════════════════════════════════════════════
+function renderDashboard(d) {
+  // KPI
+  document.getElementById("kpi-stations").textContent   = d.summary.totalStations;
+  document.getElementById("kpi-fail").textContent       = d.summary.failLabs;
+  document.getElementById("kpi-complaint").textContent  = d.summary.openComplaints;
+  document.getElementById("kpi-households").textContent = d.summary.totalHouseholds;
+  document.getElementById("dashLastUpdate").textContent = "อัปเดต: " + new Date().toLocaleTimeString("th-TH");
+
+  // Alerts
+  const alertCard = document.getElementById("alertCard");
+  const alertList = document.getElementById("alertList");
+  if (d.alerts && d.alerts.length > 0) {
+    alertCard.style.display = "";
+    alertList.innerHTML = d.alerts.map(a =>
+      `<div class="alert ${a.level}"><i class="ti ti-alert-circle"></i>${a.msg}</div>`
+    ).join("");
+  } else {
+    alertCard.style.display = "none";
+  }
+
+  // Station table
+  const tbody = document.getElementById("dashStationBody");
+  if (!d.stations || d.stations.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="notice">ไม่พบข้อมูลสถานี</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = d.stations.map(s => {
+    const daily = s.latestDaily;
+    const lab   = s.latestLab;
+    const capClass = s.capacity === "เกินอัตราการผลิต" ? "capacity-warn" : "capacity-ok";
+    const capIcon  = s.capacity === "เกินอัตราการผลิต" ? "⚠️" : "✅";
+    let clDisplay = "-";
+    if (daily && daily.clTail) {
+      const v = parseFloat(daily.clTail);
+      const cls = isNaN(v) ? "" : (v < 0.2 ? "cl-low" : v < 0.5 ? "cl-mid" : "cl-ok");
+      clDisplay = `<span class="${cls}">${daily.clTail}</span>`;
+    }
+    let phDisplay = daily ? daily.ph || "-" : "-";
+    let labDisplay = "-";
+    if (lab) {
+      labDisplay = lab.result === "ผ่าน"
+        ? `<span class="badge ok"><i class="ti ti-check"></i> ผ่าน</span>`
+        : `<span class="badge danger"><i class="ti ti-x"></i> ไม่ผ่าน</span>`;
+    }
+    const statusMap = {
+      "ปกติ":          `<span class="badge ok">ปกติ</span>`,
+      "เฝ้าระวัง":     `<span class="badge warn">เฝ้าระวัง</span>`,
+      "ไม่ผ่านแล็บ":  `<span class="badge danger">ไม่ผ่านแล็บ</span>`,
+    };
+    return `<tr>
+      <td><strong>${s.name}</strong></td>
+      <td>${s.size || "-"}</td>
+      <td>${s.operator || "-"}</td>
+      <td>${clDisplay}</td>
+      <td>${phDisplay}</td>
+      <td><span class="${capClass}">${capIcon} ${s.capacity || "-"}</span></td>
+      <td>${labDisplay}</td>
+      <td>${statusMap[s.status] || s.status}</td>
+    </tr>`;
+  }).join("");
+}
+
+// ══════════════════════════════════════════════════════════
+//  DAILY LOGS
+// ══════════════════════════════════════════════════════════
+function loadDailyLogs() {
+  const date  = document.getElementById("dailyDateFilter").value;
+  const stId  = document.getElementById("dailyStationFilter").value;
+  const filter = {};
+  if (date) filter.date = date;
+  if (stId) filter.stId = stId;
+  showLoading(true);
+  call("getDailyLogs", filter, function(res) {
+    showLoading(false);
+    if (res.ok) { state.daily = res.data; renderDailyTable(); }
+    else toast("โหลดข้อมูลผิดพลาด: " + res.error, "error");
+  });
+}
+
+function renderDailyTable() {
+  const tbody = document.getElementById("dailyBody");
+  const canEdit = state.role !== "operator"; // supervisor/admin แก้ได้
+  if (!state.daily.length) {
+    tbody.innerHTML = `<tr><td colspan="11" class="notice">ไม่มีข้อมูล</td></tr>`; return;
+  }
+  tbody.innerHTML = state.daily.map(r => {
+    const clTail = parseFloat(r.clTail);
+    const clClass = isNaN(clTail) ? "" : (clTail < 0.2 ? "cl-low" : clTail < 0.5 ? "cl-mid" : "cl-ok");
+    const actions = `
+      <button class="btn sm" onclick="openEditDaily(${JSON.stringify(r).replace(/"/g,'&quot;')})"><i class="ti ti-pencil"></i></button>
+      ${canEdit ? `<button class="btn sm danger" onclick="confirmDelete('daily',${r.rowIndex},'บันทึกวันที่ ${r.date}')"><i class="ti ti-trash"></i></button>` : ""}
+    `;
+    return `<tr>
+      <td>${r.date}</td>
+      <td>${r.stName}</td>
+      <td>${r.chlorine || "-"}</td>
+      <td>${r.clHead || "-"}</td>
+      <td><span class="${clClass}">${r.clTail || "-"}</span></td>
+      <td>${r.ph || "-"}</td>
+      <td>${r.alum || "-"}</td>
+      <td>${r.lime || "-"}</td>
+      <td>${r.note || "-"}</td>
+      <td>${r.recorder}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join("");
+}
+
+function openAddDaily() {
+  state.editMode = { type: "daily", rowIndex: null };
+  document.getElementById("modalDailyTitle").textContent = "บันทึกข้อมูลรายวัน";
+  clearForm(["d_date","d_station","d_chlorine","d_clHead","d_clTail","d_ph","d_alum","d_lime","d_note"]);
+  document.getElementById("d_date").value = new Date().toISOString().split("T")[0];
+  document.getElementById("d_warning").style.display = "none";
+  openModal("modalDaily");
+}
+
+function openEditDaily(r) {
+  state.editMode = { type: "daily", rowIndex: r.rowIndex };
+  document.getElementById("modalDailyTitle").textContent = "แก้ไขบันทึกรายวัน";
+  document.getElementById("d_date").value     = r.date;
+  document.getElementById("d_station").value  = r.stId;
+  document.getElementById("d_chlorine").value = r.chlorine;
+  document.getElementById("d_clHead").value   = r.clHead;
+  document.getElementById("d_clTail").value   = r.clTail;
+  document.getElementById("d_ph").value       = r.ph;
+  document.getElementById("d_alum").value     = r.alum;
+  document.getElementById("d_lime").value     = r.lime;
+  document.getElementById("d_note").value     = r.note;
+  document.getElementById("d_warning").style.display = "none";
+  openModal("modalDaily");
+}
+
+function onDailyStationChange() {
+  // Auto-check warnings when station changes
+  checkDailyWarnings();
+}
+
+function checkDailyWarnings() {
+  const clTail = parseFloat(document.getElementById("d_clTail").value);
+  const ph     = parseFloat(document.getElementById("d_ph").value);
+  const warns  = [];
+  if (!isNaN(clTail) && clTail < 0.2) warns.push("⚠️ คลอรีนปลายท่อต่ำกว่าเกณฑ์ (&lt;0.2 mg/L)");
+  if (!isNaN(ph) && (ph < 6.5 || ph > 8.5)) warns.push("⚠️ pH อยู่นอกเกณฑ์มาตรฐาน (6.5–8.5)");
+  const warnEl = document.getElementById("d_warning");
+  if (warns.length > 0) {
+    warnEl.innerHTML = warns.map(w => `<div class="alert warn">${w}</div>`).join("");
+    warnEl.style.display = "";
+  } else {
+    warnEl.style.display = "none";
+  }
+}
+
+function saveDaily() {
+  const stId = document.getElementById("d_station").value;
+  const date = document.getElementById("d_date").value;
+  if (!stId || !date) { toast("กรุณาเลือกสถานีและวันที่", "warn"); return; }
+  const st = state.stations.find(s => String(s.id) === String(stId));
+  checkDailyWarnings();
+  const payload = {
+    date:     date,
+    stId:     stId,
+    stName:   st ? st.name : "",
+    chlorine: parseFloat(document.getElementById("d_chlorine").value) || 0,
+    clHead:   document.getElementById("d_clHead").value,
+    clTail:   document.getElementById("d_clTail").value,
+    ph:       parseFloat(document.getElementById("d_ph").value) || 0,
+    alum:     parseFloat(document.getElementById("d_alum").value) || 0,
+    lime:     parseFloat(document.getElementById("d_lime").value) || 0,
+    note:     document.getElementById("d_note").value,
+    recorder: state.role === "operator" ? "ผู้ปฏิบัติงาน" : state.role === "supervisor" ? "หัวหน้างาน" : "ผู้บริหาร",
+  };
+  if (state.editMode.rowIndex) {
+    payload.rowIndex = state.editMode.rowIndex;
+    callAction("updateDailyLog", payload, "อัปเดตข้อมูลรายวันสำเร็จ", "modalDaily", loadDailyLogs);
+  } else {
+    callAction("addDailyLog", payload, "บันทึกข้อมูลรายวันสำเร็จ", "modalDaily", loadDailyLogs);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  LAB RESULTS
+// ══════════════════════════════════════════════════════════
+function loadLabResults() {
+  const stId   = document.getElementById("labStationFilter").value;
+  const result = document.getElementById("labResultFilter").value;
+  const filter = {};
+  if (stId) filter.stId = stId;
+  if (result) filter.result = result;
+  showLoading(true);
+  call("getLabResults", filter, function(res) {
+    showLoading(false);
+    if (res.ok) { state.lab = res.data; renderLabTable(); }
+    else toast("โหลดข้อมูลผิดพลาด", "error");
+  });
+}
+
+function renderLabTable() {
+  const tbody = document.getElementById("labBody");
+  const canEdit = state.role !== "operator";
+  if (!state.lab.length) {
+    tbody.innerHTML = `<tr><td colspan="11" class="notice">ไม่มีข้อมูล</td></tr>`; return;
+  }
+  tbody.innerHTML = state.lab.map(r => {
+    const resultBadge = r.result === "ผ่าน"
+      ? `<span class="badge ok"><i class="ti ti-check"></i> ผ่าน</span>`
+      : `<span class="badge danger"><i class="ti ti-x"></i> ไม่ผ่าน</span>`;
+    const actions = `
+      <button class="btn sm" onclick="openEditLab(${JSON.stringify(r).replace(/"/g,'&quot;')})"><i class="ti ti-pencil"></i></button>
+      ${canEdit ? `<button class="btn sm danger" onclick="confirmDelete('lab',${r.rowIndex},'ผลแล็บวันที่ ${r.date}')"><i class="ti ti-trash"></i></button>` : ""}
+    `;
+    return `<tr>
+      <td>${r.date}</td>
+      <td>${r.stName}</td>
+      <td>${r.turbidity}</td>
+      <td>${r.ph}</td>
+      <td>${r.iron}</td>
+      <td>${r.mn}</td>
+      <td>${r.coliform}</td>
+      <td>${r.ecoli}</td>
+      <td>${resultBadge}</td>
+      <td>${r.note || "-"}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join("");
+}
+
+function openAddLab() {
+  state.editMode = { type: "lab", rowIndex: null };
+  document.getElementById("modalLabTitle").textContent = "บันทึกผลตรวจวิเคราะห์น้ำ";
+  clearForm(["l_date","l_station","l_turbidity","l_ph","l_iron","l_mn","l_coliform","l_ecoli","l_note"]);
+  document.getElementById("l_date").value = new Date().toISOString().split("T")[0];
+  openModal("modalLab");
+}
+
+function openEditLab(r) {
+  state.editMode = { type: "lab", rowIndex: r.rowIndex };
+  document.getElementById("modalLabTitle").textContent = "แก้ไขผลแล็บ";
+  document.getElementById("l_date").value      = r.date;
+  document.getElementById("l_station").value   = r.stId;
+  document.getElementById("l_turbidity").value = r.turbidity;
+  document.getElementById("l_ph").value        = r.ph;
+  document.getElementById("l_iron").value      = r.iron;
+  document.getElementById("l_mn").value        = r.mn;
+  document.getElementById("l_coliform").value  = r.coliform;
+  document.getElementById("l_ecoli").value     = r.ecoli;
+  document.getElementById("l_note").value      = r.note;
+  openModal("modalLab");
+}
+
+function saveLab() {
+  const stId = document.getElementById("l_station").value;
+  const date = document.getElementById("l_date").value;
+  if (!stId || !date) { toast("กรุณาเลือกสถานีและวันที่", "warn"); return; }
+  const st = state.stations.find(s => String(s.id) === String(stId));
+  const payload = {
+    date:      date,
+    stId:      stId,
+    stName:    st ? st.name : "",
+    turbidity: parseFloat(document.getElementById("l_turbidity").value) || 0,
+    ph:        parseFloat(document.getElementById("l_ph").value) || 0,
+    iron:      parseFloat(document.getElementById("l_iron").value) || 0,
+    mn:        parseFloat(document.getElementById("l_mn").value) || 0,
+    coliform:  parseFloat(document.getElementById("l_coliform").value) || 0,
+    ecoli:     parseFloat(document.getElementById("l_ecoli").value) || 0,
+    note:      document.getElementById("l_note").value,
+    recorder:  state.role,
+  };
+  if (state.editMode.rowIndex) {
+    payload.rowIndex = state.editMode.rowIndex;
+    callAction("updateLabResult", payload, "อัปเดตผลแล็บสำเร็จ", "modalLab", loadLabResults);
+  } else {
+    callAction("addLabResult", payload, "บันทึกผลแล็บสำเร็จ", "modalLab", function(res) {
+      loadLabResults();
+      if (res.result === "ไม่ผ่าน") toast("⚠️ ผลตรวจไม่ผ่านเกณฑ์! กรุณาดำเนินการแก้ไข", "warn");
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  STATIONS
+// ══════════════════════════════════════════════════════════
+function loadStations() {
+  showLoading(true);
+  call("getStations", {}, function(res) {
+    showLoading(false);
+    if (res.ok) { state.stations = res.data; populateStationSelects(); renderStations(); }
+    else toast("โหลดข้อมูลสถานีผิดพลาด", "error");
+  });
+}
+
+function renderStations() {
+  const tbody = document.getElementById("stBody");
+  const canEdit = state.role === "supervisor" || state.role === "admin";
+  const search  = (document.getElementById("stSearch").value || "").toLowerCase();
+  const sizeF   = document.getElementById("stSizeFilter").value;
+  let data = state.stations;
+  if (search) data = data.filter(s => s.name.toLowerCase().includes(search) || (s.operator||"").toLowerCase().includes(search));
+  if (sizeF) data = data.filter(s => s.size === sizeF);
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="notice">ไม่พบข้อมูล</td></tr>`; return;
+  }
+  tbody.innerHTML = data.map(s => {
+    const capClass = s.capacity === "เกินอัตราการผลิต" ? "capacity-warn" : "capacity-ok";
+    const editBtn = canEdit
+      ? `<button class="btn sm" onclick="openEditStation(${JSON.stringify(s).replace(/"/g,'&quot;')})"><i class="ti ti-pencil"></i> แก้ไข</button>`
+      : `<span class="text-muted" style="font-size:11px">ดูได้อย่างเดียว</span>`;
+    return `<tr>
+      <td>${s.id}</td>
+      <td><strong>${s.name}</strong><br><small class="text-muted">${s.moo || ""}</small></td>
+      <td>${s.size || "-"}</td>
+      <td>${s.rate ? s.rate + " ลบ.ม./ชม." : "-"}</td>
+      <td>${s.users || "-"} ครัวเรือน</td>
+      <td>${s.operator || "-"}${s.nickname ? " (" + s.nickname + ")" : ""}</td>
+      <td>${s.source || "-"}</td>
+      <td><span class="${capClass}">${s.capacity || "-"}</span></td>
+      <td>${editBtn}</td>
+    </tr>`;
+  }).join("");
+}
+
+function filterStations() { renderStations(); }
+
+function openEditStation(s) {
+  if (state.role === "operator") { toast("ไม่มีสิทธิ์แก้ไขข้อมูลสถานี", "warn"); return; }
+  document.getElementById("s_rowIndex").value = s.rowIndex;
+  document.getElementById("s_name").value     = s.name;
+  document.getElementById("s_operator").value = s.operator || "";
+  document.getElementById("s_nickname").value = s.nickname || "";
+  document.getElementById("s_position").value = s.position || "";
+  document.getElementById("s_source").value   = s.source   || "";
+  document.getElementById("s_backup").value   = s.backup   || "";
+  document.getElementById("s_shortage").value = s.shortage || "";
+  openModal("modalStation");
+}
+
+function saveStation() {
+  const payload = {
+    rowIndex: parseInt(document.getElementById("s_rowIndex").value),
+    operator: document.getElementById("s_operator").value,
+    nickname: document.getElementById("s_nickname").value,
+    position: document.getElementById("s_position").value,
+    source:   document.getElementById("s_source").value,
+    backup:   document.getElementById("s_backup").value,
+    shortage: document.getElementById("s_shortage").value,
+  };
+  callAction("updateStation", payload, "อัปเดตข้อมูลสถานีสำเร็จ", "modalStation", loadStations);
+}
+
+// ══════════════════════════════════════════════════════════
+//  COMPLAINTS
+// ══════════════════════════════════════════════════════════
+function loadComplaints() {
+  const status = document.getElementById("cmpStatusFilter").value;
+  const type   = document.getElementById("cmpTypeFilter").value;
+  const filter = {};
+  if (status) filter.status = status;
+  if (type)   filter.type   = type;
+  showLoading(true);
+  call("getComplaints", filter, function(res) {
+    showLoading(false);
+    if (res.ok) { state.complaints = res.data; renderComplaintTable(); }
+    else toast("โหลดข้อมูลผิดพลาด", "error");
+  });
+}
+
+function renderComplaintTable() {
+  const tbody = document.getElementById("cmpBody");
+  const canEdit = state.role !== "operator";
+  if (!state.complaints.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="notice">ไม่มีเรื่องร้องเรียน</td></tr>`; return;
+  }
+  const statusClass = { "รอดำเนินการ": "warn", "กำลังดำเนินการ": "info", "เสร็จสิ้น": "ok" };
+  tbody.innerHTML = state.complaints.map(r => {
+    const badge = `<span class="badge ${statusClass[r.status] || 'gray'}">${r.status}</span>`;
+    const actions = `
+      <button class="btn sm" onclick="openEditComplaint(${JSON.stringify(r).replace(/"/g,'&quot;')})"><i class="ti ti-pencil"></i></button>
+      ${canEdit ? `<button class="btn sm danger" onclick="confirmDelete('complaint',${r.rowIndex},'เรื่องร้องเรียน ${r.type}')"><i class="ti ti-trash"></i></button>` : ""}
+    `;
+    return `<tr>
+      <td>${r.date}</td>
+      <td>${r.stName}</td>
+      <td>${r.type}</td>
+      <td>${r.detail ? (r.detail.length > 40 ? r.detail.substring(0,40)+"..." : r.detail) : "-"}</td>
+      <td>${r.reporter || "-"}</td>
+      <td>${badge}</td>
+      <td>${r.assign || "-"}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join("");
+}
+
+function openAddComplaint() {
+  state.editMode = { type: "complaint", rowIndex: null };
+  document.getElementById("modalCmpTitle").textContent = "บันทึกเรื่องร้องเรียน";
+  clearForm(["c_date","c_station","c_type","c_reporter","c_detail","c_assign","c_action","c_doneDate"]);
+  document.getElementById("c_date").value   = new Date().toISOString().split("T")[0];
+  document.getElementById("c_status").value = "รอดำเนินการ";
+  openModal("modalComplaint");
+}
+
+function openEditComplaint(r) {
+  state.editMode = { type: "complaint", rowIndex: r.rowIndex };
+  document.getElementById("modalCmpTitle").textContent = "แก้ไขเรื่องร้องเรียน";
+  document.getElementById("c_date").value     = r.date;
+  document.getElementById("c_station").value  = r.stId;
+  document.getElementById("c_type").value     = r.type;
+  document.getElementById("c_reporter").value = r.reporter;
+  document.getElementById("c_detail").value   = r.detail;
+  document.getElementById("c_status").value   = r.status;
+  document.getElementById("c_assign").value   = r.assign;
+  document.getElementById("c_action").value   = r.action;
+  document.getElementById("c_doneDate").value = r.doneDate || "";
+  openModal("modalComplaint");
+}
+
+function saveComplaint() {
+  const stId = document.getElementById("c_station").value;
+  const type = document.getElementById("c_type").value;
+  const detail = document.getElementById("c_detail").value;
+  if (!stId || !type || !detail) { toast("กรุณากรอกข้อมูลที่จำเป็น", "warn"); return; }
+  const st = state.stations.find(s => String(s.id) === String(stId));
+  const payload = {
+    date:     document.getElementById("c_date").value,
+    stId:     stId,
+    stName:   st ? st.name : "",
+    type:     type,
+    detail:   detail,
+    reporter: document.getElementById("c_reporter").value,
+    status:   document.getElementById("c_status").value,
+    assign:   document.getElementById("c_assign").value,
+    action:   document.getElementById("c_action").value,
+    doneDate: document.getElementById("c_doneDate").value,
+    recorder: state.role,
+  };
+  if (state.editMode.rowIndex) {
+    payload.rowIndex = state.editMode.rowIndex;
+    callAction("updateComplaint", payload, "อัปเดตเรื่องร้องเรียนสำเร็จ", "modalComplaint", loadComplaints);
+  } else {
+    callAction("addComplaint", payload, "บันทึกเรื่องร้องเรียนสำเร็จ", "modalComplaint", loadComplaints);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  REPORT (admin only)
+// ══════════════════════════════════════════════════════════
+function loadReport() {
+  call("getLabResults", {}, function(lRes) {
+    call("getComplaints", {}, function(cRes) {
+      if (lRes.ok) {
+        const total   = lRes.data.length;
+        const pass    = lRes.data.filter(r => r.result === "ผ่าน").length;
+        const fail    = total - pass;
+        const pct     = total > 0 ? Math.round(pass / total * 100) : 0;
+        document.getElementById("reportQuality").innerHTML = `
+          <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px">
+            <div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--primary)">${pct}%</div><div style="font-size:12px;color:var(--gray)">ผ่านเกณฑ์</div></div>
+            <div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--danger)">${fail}</div><div style="font-size:12px;color:var(--gray)">ไม่ผ่าน</div></div>
+            <div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--info)">${total}</div><div style="font-size:12px;color:var(--gray)">ตรวจทั้งหมด</div></div>
+          </div>
+          <div style="font-size:12px;color:var(--gray)">ข้อมูลล่าสุด ณ ${new Date().toLocaleDateString("th-TH")}</div>
+        `;
+      }
+      if (cRes.ok) {
+        const total  = cRes.data.length;
+        const open   = cRes.data.filter(c => c.status === "รอดำเนินการ").length;
+        const inprog = cRes.data.filter(c => c.status === "กำลังดำเนินการ").length;
+        const done   = cRes.data.filter(c => c.status === "เสร็จสิ้น").length;
+        document.getElementById("reportComplaint").innerHTML = `
+          <div style="display:flex;gap:24px;flex-wrap:wrap">
+            <div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--warn)">${open}</div><div style="font-size:12px;color:var(--gray)">รอดำเนินการ</div></div>
+            <div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--info)">${inprog}</div><div style="font-size:12px;color:var(--gray)">กำลังดำเนินการ</div></div>
+            <div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--primary)">${done}</div><div style="font-size:12px;color:var(--gray)">เสร็จสิ้น</div></div>
+            <div style="text-align:center"><div style="font-size:36px;font-weight:800;color:var(--gray)">${total}</div><div style="font-size:12px;color:var(--gray)">รวมทั้งหมด</div></div>
+          </div>
+        `;
+      }
+      // Alert stations
+      if (state.dashboard && state.dashboard.stations) {
+        const alertSt = state.dashboard.stations.filter(s => s.status !== "ปกติ");
+        const alertEl = document.getElementById("reportAlert");
+        if (alertSt.length === 0) {
+          alertEl.innerHTML = `<div class="alert info"><i class="ti ti-check"></i> ทุกสถานีอยู่ในสถานะปกติ</div>`;
+        } else {
+          alertEl.innerHTML = alertSt.map(s => `
+            <div class="alert ${s.status === 'ไม่ผ่านแล็บ' ? 'danger' : 'warn'}">
+              <strong>${s.name}</strong> — ${s.status}
+              ${s.latestLab && s.latestLab.result === "ไม่ผ่าน" ? "(ผลแล็บล่าสุด: ไม่ผ่าน)" : ""}
+            </div>
+          `).join("");
+        }
+      }
+    });
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+//  DELETE / CONFIRM
+// ══════════════════════════════════════════════════════════
+let pendingDelete = null;
+
+function confirmDelete(type, rowIndex, label) {
+  pendingDelete = { type, rowIndex };
+  document.getElementById("confirmMsg").innerHTML =
+    `คุณต้องการลบ <strong>"${label}"</strong> ใช่หรือไม่?<br><span style="color:var(--danger);font-size:12px">การลบไม่สามารถยกเลิกได้</span>`;
+  openModal("modalConfirm");
+}
+
+function execConfirm() {
+  if (!pendingDelete) return;
+  const { type, rowIndex } = pendingDelete;
+  const actionMap = { daily: "deleteDailyLog", lab: "deleteLabResult", complaint: "deleteComplaint" };
+  const cbMap     = { daily: loadDailyLogs, lab: loadLabResults, complaint: loadComplaints };
+  closeModal("modalConfirm");
+  showLoading(true);
+  call(actionMap[type], { rowIndex }, function(res) {
+    showLoading(false);
+    if (res.ok) { toast("ลบข้อมูลสำเร็จ", "ok"); cbMap[type](); }
+    else toast("ลบผิดพลาด: " + res.error, "error");
+    pendingDelete = null;
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+//  UTILITIES
+// ══════════════════════════════════════════════════════════
+function populateStationSelects() {
+  const selects = ["d_station","l_station","c_station","dailyStationFilter","labStationFilter"];
+  selects.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const isFilter = id.includes("Filter");
+    const prev = el.value;
+    el.innerHTML = isFilter
+      ? `<option value="">ทุกสถานี</option>`
+      : `<option value="">-- เลือกสถานี --</option>`;
+    state.stations.forEach(s => {
+      const opt = document.createElement("option");
+      opt.value = s.id;
+      opt.textContent = s.name;
+      el.appendChild(opt);
+    });
+    if (prev) el.value = prev;
+  });
+}
+
+function call(action, payload, cb) {
+  google.script.run
+    .withSuccessHandler(cb)
+    .withFailureHandler(err => { showLoading(false); toast("Error: " + err.message, "error"); cb({ ok: false, error: err.message }); })
+    .apiCall(action, payload);
+}
+
+function callAction(action, payload, successMsg, modalId, cb) {
+  showLoading(true);
+  call(action, payload, function(res) {
+    showLoading(false);
+    if (res.ok) {
+      toast(successMsg, "ok");
+      closeModal(modalId);
+      if (typeof cb === "function") cb(res);
+    } else {
+      toast("ผิดพลาด: " + (res.error || "Unknown"), "error");
+    }
+  });
+}
+
+function openModal(id)  { document.getElementById(id).classList.remove("hidden"); }
+function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
+
+function clearForm(ids) {
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+}
+
+function showLoading(show) {
+  document.getElementById("loadingOverlay").style.display = show ? "flex" : "none";
+}
+
+function toast(msg, type) {
+  const wrap = document.getElementById("toastWrap");
+  const el = document.createElement("div");
+  el.className = `toast ${type || "ok"}`;
+  const icon = { ok: "ti-circle-check", error: "ti-alert-circle", warn: "ti-alert-triangle" };
+  el.innerHTML = `<i class="ti ${icon[type] || 'ti-circle-check'}"></i> ${msg}`;
+  wrap.appendChild(el);
+  setTimeout(() => { el.style.opacity = "0"; el.style.transition = ".3s"; setTimeout(() => el.remove(), 300); }, 3500);
+}

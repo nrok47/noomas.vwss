@@ -1,0 +1,73 @@
+    <!-- SURVEY REPORT (admin only) -->
+    <!-- วางก่อน </main> ใน Index.html -->
+    <div id="page-surveyreport" class="hidden">
+
+      <!-- Form URL -->
+      <div id="srFormUrl"></div>
+
+      <!-- KPI ภาพรวม -->
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title"><i class="ti ti-report-analytics"></i> สรุปผลประเมินความพึงพอใจ</div>
+          <button class="btn" onclick="loadSurveyReport()"><i class="ti ti-refresh"></i> รีเฟรช</button>
+        </div>
+        <div id="srOverall" class="notice">กำลังโหลด...</div>
+      </div>
+
+      <!-- กราฟแท่งรายด้าน -->
+      <div class="card" id="srBarWrap">
+        <div class="card-title" style="margin-bottom:14px">
+          <i class="ti ti-chart-bar"></i> เปรียบเทียบคะแนนรายด้าน แยกตามสถานี
+        </div>
+        <div style="position:relative;height:320px">
+          <canvas id="srBarChart"></canvas>
+        </div>
+      </div>
+
+      <!-- ตารางรายสถานี -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">
+          <i class="ti ti-table"></i> ผลประเมินรายสถานี
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>สถานี</th>
+                <th style="text-align:center">ผู้ตอบ</th>
+                <th style="text-align:center">ภาพรวม</th>
+                <th style="text-align:center">คุณภาพน้ำ</th>
+                <th style="text-align:center">ปริมาณ</th>
+                <th style="text-align:center">ต่อเนื่อง</th>
+                <th style="text-align:center">ราคา</th>
+                <th style="text-align:center">บริการ</th>
+                <th style="text-align:center">โครงสร้าง</th>
+                <th style="text-align:center">สื่อสาร</th>
+              </tr>
+            </thead>
+            <tbody id="srTableBody">
+              <tr><td colspan="10" class="notice">กำลังโหลด...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Demographic -->
+      <div class="grid2">
+        <div class="card">
+          <div class="card-title" style="margin-bottom:12px"><i class="ti ti-gender-bigender"></i> สัดส่วนเพศผู้ตอบ</div>
+          <div id="srGender" class="notice">กำลังโหลด...</div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:12px"><i class="ti ti-calendar-stats"></i> สัดส่วนช่วงอายุ</div>
+          <div id="srAge" class="notice">กำลังโหลด...</div>
+        </div>
+      </div>
+
+      <!-- ข้อเสนอแนะ -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px"><i class="ti ti-messages"></i> ข้อเสนอแนะล่าสุด</div>
+        <div id="srComments" class="notice">กำลังโหลด...</div>
+      </div>
+
+    </div>

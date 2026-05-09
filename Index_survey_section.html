@@ -1,0 +1,234 @@
+<!-- ══════════════════════════════════════════════════════════
+     วางใน Index.html — 2 จุด
+
+     จุดที่ 1: เพิ่มปุ่ม nav (ก่อน </nav>):
+     <button class="nav-btn admin-only hidden" onclick="showPage('surveyreport')" data-page="surveyreport">
+       <i class="ti ti-report-analytics"></i> สรุปผลประเมิน
+     </button>
+
+     จุดที่ 2: วาง HTML นี้ทั้งหมดก่อน </main>
+═══════════════════════════════════════════════════════════ -->
+
+    <!-- SURVEY REPORT (admin only) -->
+    <div id="page-surveyreport" class="hidden">
+
+      <!-- Form URL banner -->
+      <div id="srFormUrl"></div>
+
+      <!-- KPI ภาพรวม -->
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title">
+            <i class="ti ti-report-analytics"></i> สรุปผลประเมินความพึงพอใจผู้ใช้น้ำ
+          </div>
+          <button class="btn" onclick="loadSurveyReport()">
+            <i class="ti ti-refresh"></i> รีเฟรช
+          </button>
+        </div>
+        <div id="srOverall" class="notice">กำลังโหลด...</div>
+      </div>
+
+      <!-- กราฟแท่งรายด้าน -->
+      <div class="card" id="srBarWrap" style="display:none">
+        <div class="card-title" style="margin-bottom:14px">
+          <i class="ti ti-chart-bar"></i> เปรียบเทียบคะแนนเฉลี่ย 7 ด้าน แยกตามสถานี
+        </div>
+        <div style="position:relative;height:320px">
+          <canvas id="srBarChart"></canvas>
+        </div>
+      </div>
+
+      <!-- ตารางรายสถานี -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">
+          <i class="ti ti-table"></i> ผลประเมินรายสถานี
+          <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:8px">
+            (คะแนน 1–5 | สีเขียว ≥4 | สีน้ำเงิน ≥3 | สีเหลือง &lt;3)
+          </span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>สถานี</th>
+                <th style="text-align:center">ผู้ตอบ</th>
+                <th style="text-align:center">ภาพรวม</th>
+                <th style="text-align:center">D1<br><small>คุณภาพ</small></th>
+                <th style="text-align:center">D2<br><small>ปริมาณ</small></th>
+                <th style="text-align:center">D3<br><small>ต่อเนื่อง</small></th>
+                <th style="text-align:center">D4<br><small>ราคา</small></th>
+                <th style="text-align:center">D5<br><small>บริการ</small></th>
+                <th style="text-align:center">D6<br><small>โครงสร้าง</small></th>
+                <th style="text-align:center">D7<br><small>สื่อสาร</small></th>
+              </tr>
+            </thead>
+            <tbody id="srTableBody">
+              <tr><td colspan="10" class="notice">กำลังโหลด...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Demographics -->
+      <div class="grid2">
+        <div class="card">
+          <div class="card-title" style="margin-bottom:12px">
+            <i class="ti ti-gender-bigender"></i> สัดส่วนเพศผู้ตอบ
+          </div>
+          <div id="srGender" class="notice">กำลังโหลด...</div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:12px">
+            <i class="ti ti-calendar-stats"></i> สัดส่วนช่วงอายุ
+          </div>
+          <div id="srAge" class="notice">กำลังโหลด...</div>
+        </div>
+      </div>
+
+      <!-- ข้อเสนอแนะ -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">
+          <i class="ti ti-messages"></i> ข้อเสนอแนะล่าสุด
+        </div>
+        <div id="srComments" class="notice">กำลังโหลด...</div>
+      </div>
+
+    </div>
+
+<!-- ══════════════════════════════════════════════════════════
+     JS สำหรับ App.html
+     วางก่อนบรรทัด // TREND CHARTS
+     และเพิ่มใน loadPageData():
+       else if (page === "surveyreport") loadSurveyReport();
+═══════════════════════════════════════════════════════════ -->
+<script>
+// ── Survey Report Functions ────────────────────────────────
+var srChart = null;
+
+function loadSurveyReport() {
+  showLoading(true);
+  call("getSurveyFormUrl", {}, function(urlRes) {
+    var urlEl = document.getElementById("srFormUrl");
+    if (urlEl && urlRes.ok && urlRes.url) {
+      urlEl.innerHTML =
+        '<div class="alert info" style="margin-bottom:12px">' +
+        '<i class="ti ti-link"></i>&nbsp;<strong>Form URL สำหรับแชร์ชาวบ้าน:</strong>&nbsp;' +
+        '<a href="' + urlRes.url + '" target="_blank" style="color:var(--info)">' + urlRes.url + '</a>' +
+        '&nbsp;<button class="btn sm" onclick="navigator.clipboard.writeText(\'' + urlRes.url + '\').then(function(){toast(\'คัดลอก URL แล้ว\',\'ok\');})">' +
+        '<i class="ti ti-copy"></i> คัดลอก</button></div>';
+    } else if (urlEl) {
+      urlEl.innerHTML =
+        '<div class="alert warn" style="margin-bottom:12px">' +
+        '<i class="ti ti-alert-triangle"></i> ยังไม่มี Form — กรุณารัน <strong>createSurveyForm()</strong> ใน Apps Script ก่อน</div>';
+    }
+  });
+
+  call("getSurveySummary", {}, function(res) {
+    showLoading(false);
+    if (!res.ok) { toast("โหลดข้อมูลผิดพลาด", "error"); return; }
+
+    // ── KPI ──
+    var avg  = parseFloat(res.totalAvg);
+    var lvl  = srLevel(avg);
+    document.getElementById("srOverall").innerHTML =
+      '<div style="display:flex;gap:14px;flex-wrap:wrap">' +
+      srKpi(res.total + " คน", "ผู้ตอบทั้งหมด", "info") +
+      srKpi(res.totalAvg || "0", "คะแนนเฉลี่ยรวม (1–5)", "ok") +
+      '<div class="kpi ' + lvl.cls + '" style="flex:2;min-width:180px;display:flex;flex-direction:column;align-items:center;justify-content:center">' +
+      '<div style="font-size:20px;font-weight:800">' + lvl.text + '</div>' +
+      '<div class="kpi-lbl">ระดับความพึงพอใจภาพรวม</div></div>' +
+      '</div>';
+
+    // ── กราฟแท่ง ──
+    var hasSt = (res.byStation || []).filter(function(s){return s.count>0;});
+    var dims  = ["คุณภาพ","ปริมาณ","ต่อเนื่อง","ราคา","บริการ","โครงสร้าง","สื่อสาร"];
+    var clrs  = ["#1D9E75","#185FA5","#f29900","#d93025","#8B4FCB","#e8730c","#2b9e9e"];
+    if (hasSt.length) {
+      document.getElementById("srBarWrap").style.display = "";
+      var ctx = document.getElementById("srBarChart").getContext("2d");
+      if (srChart) srChart.destroy();
+      srChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: dims,
+          datasets: hasSt.map(function(s,i){
+            return {
+              label: s.stName,
+              data: s.d.map(function(v){return parseFloat(v)||0;}),
+              backgroundColor: clrs[i%clrs.length]+"bb",
+              borderColor: clrs[i%clrs.length],
+              borderWidth:1,
+            };
+          })
+        },
+        options:{
+          responsive:true,
+          plugins:{legend:{position:"bottom"},tooltip:{mode:"index"}},
+          scales:{y:{min:0,max:5,title:{display:true,text:"คะแนนเฉลี่ย"}}}
+        }
+      });
+    }
+
+    // ── ตารางรายสถานี ──
+    var tbody = document.getElementById("srTableBody");
+    tbody.innerHTML = (res.byStation||[]).map(function(s){
+      if (!s.count)
+        return '<tr><td><strong>'+s.stName+'</strong></td><td colspan="9" style="color:var(--text-muted);font-size:12px">ยังไม่มีการประเมิน</td></tr>';
+      var av = parseFloat(s.avg);
+      var badge = '<span class="badge '+(av>=3.5?"ok":av>=2.5?"info":"warn")+'">'+s.avg+'</span>';
+      var dcells = s.d.map(function(v){
+        var fv=parseFloat(v);
+        var c=fv>=4?"var(--primary)":fv>=3?"var(--info)":"var(--warn)";
+        return '<td style="text-align:center;font-weight:700;color:'+c+'">'+v+'</td>';
+      }).join("");
+      return '<tr><td><strong>'+s.stName+'</strong></td><td style="text-align:center">'+s.count+'</td><td style="text-align:center">'+badge+'</td>'+dcells+'</tr>';
+    }).join("") || '<tr><td colspan="10" class="notice">ยังไม่มีข้อมูล</td></tr>';
+
+    // ── Demographics ──
+    srDemo("srGender", res.genderCount||{});
+    srDemo("srAge",    res.ageCount||{});
+
+    // ── ข้อเสนอแนะ ──
+    var commEl = document.getElementById("srComments");
+    var comms  = res.comments||[];
+    commEl.innerHTML = comms.length
+      ? comms.map(function(c){
+          return '<div style="padding:10px 14px;border-left:3px solid var(--primary);background:var(--gray-light);border-radius:0 6px 6px 0;margin-bottom:8px">' +
+            '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">'+c.stName+' · '+c.ts+'</div>' +
+            '<div style="font-size:13px">'+c.suggest+'</div></div>';
+        }).join("")
+      : '<div class="notice">ยังไม่มีข้อเสนอแนะ</div>';
+  });
+}
+
+function srKpi(val, lbl, cls) {
+  return '<div class="kpi '+cls+'" style="flex:1;min-width:130px">'+
+    '<div class="kpi-val" style="font-size:22px">'+val+'</div>'+
+    '<div class="kpi-lbl">'+lbl+'</div></div>';
+}
+
+function srLevel(avg) {
+  if (avg>=4.5) return {text:"พึงพอใจมากที่สุด",cls:"ok"};
+  if (avg>=3.5) return {text:"พึงพอใจมาก",cls:"ok"};
+  if (avg>=2.5) return {text:"ปานกลาง",cls:"info"};
+  if (avg>=1.5) return {text:"พึงพอใจน้อย",cls:"warn"};
+  if (avg>0)    return {text:"ควรปรับปรุง",cls:"danger"};
+  return {text:"ยังไม่มีข้อมูล",cls:"gray"};
+}
+
+function srDemo(elId, data) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  var keys = Object.keys(data).filter(function(k){return k&&k!=="ไม่ระบุ"&&k!=="";});
+  var total = Object.values(data).reduce(function(s,v){return s+v;},0);
+  if (!total||!keys.length) { el.innerHTML='<div class="notice">ไม่มีข้อมูล</div>'; return; }
+  el.innerHTML = keys.map(function(k){
+    var pct=Math.round(data[k]/total*100);
+    return '<div style="margin-bottom:8px">'+
+      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">'+
+      '<span>'+k+'</span><span style="color:var(--gray)">'+data[k]+' คน ('+pct+'%)</span></div>'+
+      '<div style="height:8px;background:var(--border);border-radius:4px">'+
+      '<div style="height:100%;width:'+pct+'%;background:var(--primary);border-radius:4px;transition:.3s"></div></div></div>';
+  }).join("");
+}
+</script>

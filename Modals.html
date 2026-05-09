@@ -1,0 +1,295 @@
+<!-- ═══════════════════════════════════════════════════════
+     MODAL: บันทึกรายวัน
+════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modalDaily">
+  <div class="modal">
+    <div class="modal-hd">
+      <div class="modal-title"><i class="ti ti-clipboard-list"></i> <span id="modalDailyTitle">บันทึกข้อมูลรายวัน</span></div>
+      <button class="btn-close" onclick="closeModal('modalDaily')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>วันที่ <span style="color:red">*</span></label>
+          <input type="date" id="d_date">
+        </div>
+        <div class="form-group">
+          <label>สถานี <span style="color:red">*</span></label>
+          <select id="d_station" onchange="onDailyStationChange()">
+            <option value="">-- เลือกสถานี --</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row cols3">
+        <div class="form-group">
+          <label>ปริมาณคลอรีน (มล./ชม.)</label>
+          <input type="number" step="0.01" id="d_chlorine" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>คลอรีนต้นท่อ (mg/L)</label>
+          <input type="number" step="0.01" id="d_clHead" placeholder="0.00">
+          <div class="form-hint">เกณฑ์: 0.2–5.0 mg/L</div>
+        </div>
+        <div class="form-group">
+          <label>คลอรีนปลายท่อ (mg/L)</label>
+          <input type="number" step="0.01" id="d_clTail" placeholder="0.00">
+          <div class="form-hint">เกณฑ์: ≥0.2 mg/L</div>
+        </div>
+      </div>
+      <div class="form-row cols3">
+        <div class="form-group">
+          <label>pH</label>
+          <input type="number" step="0.01" id="d_ph" placeholder="7.00">
+          <div class="form-hint">เกณฑ์: 6.5–8.5</div>
+        </div>
+        <div class="form-group">
+          <label>สารส้ม (ก./ชม.)</label>
+          <input type="number" step="0.01" id="d_alum" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>ปูนขาว (ก./ชม.)</label>
+          <input type="number" step="0.01" id="d_lime" placeholder="0.00">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>หมายเหตุ</label>
+        <textarea id="d_note" placeholder="ข้อสังเกตหรือปัญหาที่พบ..."></textarea>
+      </div>
+      <!-- Warning area -->
+      <div id="d_warning" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modalDaily')">ยกเลิก</button>
+      <button class="btn primary" onclick="saveDaily()"><i class="ti ti-device-floppy"></i> บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     MODAL: ผลแล็บ
+════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modalLab">
+  <div class="modal lg">
+    <div class="modal-hd">
+      <div class="modal-title"><i class="ti ti-flask"></i> <span id="modalLabTitle">บันทึกผลตรวจวิเคราะห์น้ำ</span></div>
+      <button class="btn-close" onclick="closeModal('modalLab')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>วันที่เก็บตัวอย่าง <span style="color:red">*</span></label>
+          <input type="date" id="l_date">
+        </div>
+        <div class="form-group">
+          <label>สถานี <span style="color:red">*</span></label>
+          <select id="l_station">
+            <option value="">-- เลือกสถานี --</option>
+          </select>
+        </div>
+      </div>
+      <div class="card" style="background:#f8f9fa;padding:12px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:var(--gray);margin-bottom:8px">ค่าทางกายภาพ (Physical)</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>ความขุ่น NTU</label>
+            <input type="number" step="0.01" id="l_turbidity" placeholder="0.00">
+            <div class="form-hint">เกณฑ์: ≤ 5 NTU</div>
+          </div>
+          <div class="form-group">
+            <label>pH</label>
+            <input type="number" step="0.01" id="l_ph" placeholder="7.00">
+            <div class="form-hint">เกณฑ์: 6.5–8.5</div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="background:#f8f9fa;padding:12px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:var(--gray);margin-bottom:8px">ค่าทางเคมี (Chemical)</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>เหล็ก mg/L</label>
+            <input type="number" step="0.001" id="l_iron" placeholder="0.000">
+            <div class="form-hint">เกณฑ์: ≤ 0.3 mg/L</div>
+          </div>
+          <div class="form-group">
+            <label>แมงกานีส mg/L</label>
+            <input type="number" step="0.001" id="l_mn" placeholder="0.000">
+            <div class="form-hint">เกณฑ์: ≤ 0.3 mg/L</div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="background:#f8f9fa;padding:12px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:var(--gray);margin-bottom:8px">ค่าทางชีวภาพ (Bacteriological)</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>โคลิฟอร์มแบคทีเรีย MPN/100mL</label>
+            <input type="number" step="0.01" id="l_coliform" placeholder="0.00">
+            <div class="form-hint">เกณฑ์: &lt; 1.1 MPN/100mL</div>
+          </div>
+          <div class="form-group">
+            <label>E.coli MPN/100mL</label>
+            <input type="number" step="0.01" id="l_ecoli" placeholder="0.00">
+            <div class="form-hint">เกณฑ์: = 0 (ต้องไม่ตรวจพบ)</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>หมายเหตุ</label>
+        <textarea id="l_note" placeholder="ข้อสังเกต / แหล่งส่งตรวจ..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modalLab')">ยกเลิก</button>
+      <button class="btn primary" onclick="saveLab()"><i class="ti ti-device-floppy"></i> บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     MODAL: เรื่องร้องเรียน
+════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modalComplaint">
+  <div class="modal lg">
+    <div class="modal-hd">
+      <div class="modal-title"><i class="ti ti-message-report"></i> <span id="modalCmpTitle">บันทึกเรื่องร้องเรียน</span></div>
+      <button class="btn-close" onclick="closeModal('modalComplaint')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>วันที่รับเรื่อง <span style="color:red">*</span></label>
+          <input type="date" id="c_date">
+        </div>
+        <div class="form-group">
+          <label>สถานี <span style="color:red">*</span></label>
+          <select id="c_station">
+            <option value="">-- เลือกสถานี --</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>ประเภทปัญหา <span style="color:red">*</span></label>
+          <select id="c_type">
+            <option value="">-- เลือกประเภท --</option>
+            <option>คุณภาพน้ำ</option>
+            <option>แรงดันน้ำ</option>
+            <option>ท่อแตก/รั่ว</option>
+            <option>กลิ่น/สี</option>
+            <option>มิเตอร์น้ำ</option>
+            <option>อื่นๆ</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>ชื่อผู้ร้องเรียน</label>
+          <input type="text" id="c_reporter" placeholder="ชื่อ-นามสกุล หรือ ไม่ระบุ">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>รายละเอียด <span style="color:red">*</span></label>
+        <textarea id="c_detail" placeholder="อธิบายปัญหาที่พบ..." style="min-height:80px"></textarea>
+      </div>
+      <div class="divider"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>สถานะ</label>
+          <select id="c_status">
+            <option>รอดำเนินการ</option>
+            <option>กำลังดำเนินการ</option>
+            <option>เสร็จสิ้น</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>ผู้รับผิดชอบ</label>
+          <input type="text" id="c_assign" placeholder="ชื่อผู้รับผิดชอบ">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>การดำเนินการ / ผลการแก้ไข</label>
+        <textarea id="c_action" placeholder="สรุปการดำเนินการ..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>วันที่เสร็จสิ้น</label>
+        <input type="date" id="c_doneDate">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modalComplaint')">ยกเลิก</button>
+      <button class="btn primary" onclick="saveComplaint()"><i class="ti ti-device-floppy"></i> บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     MODAL: แก้ไขสถานี (หัวหน้า/ผู้บริหาร)
+════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modalStation">
+  <div class="modal lg">
+    <div class="modal-hd">
+      <div class="modal-title"><i class="ti ti-building"></i> แก้ไขข้อมูลสถานี</div>
+      <button class="btn-close" onclick="closeModal('modalStation')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="s_rowIndex">
+      <div class="form-group">
+        <label>ชื่อสถานี</label>
+        <input type="text" id="s_name" disabled style="background:#f1f3f4">
+        <div class="form-hint">ชื่อสถานีไม่สามารถแก้ไขได้ในระบบ</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>ชื่อผู้ดูแลระบบ</label>
+          <input type="text" id="s_operator" placeholder="ชื่อ-นามสกุล">
+        </div>
+        <div class="form-group">
+          <label>ชื่อเล่น / ชื่อที่เรียก</label>
+          <input type="text" id="s_nickname" placeholder="ชื่อเล่น">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>ตำแหน่ง / บทบาท</label>
+        <input type="text" id="s_position" placeholder="เช่น พนักงานประปา">
+      </div>
+      <div class="divider"></div>
+      <div class="form-group">
+        <label>แหล่งน้ำดิบหลัก</label>
+        <input type="text" id="s_source" placeholder="เช่น บ่อบาดาล / แม่น้ำมูล">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>แหล่งน้ำสำรอง</label>
+          <input type="text" id="s_backup" placeholder="เช่น บ่อบาดาลสำรอง">
+        </div>
+        <div class="form-group">
+          <label>ฤดูน้ำขาดแคลน</label>
+          <input type="text" id="s_shortage" placeholder="เช่น มีนาคม-พฤษภาคม">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modalStation')">ยกเลิก</button>
+      <button class="btn primary" onclick="saveStation()"><i class="ti ti-device-floppy"></i> บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     MODAL: ยืนยันลบ
+════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modalConfirm">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-hd">
+      <div class="modal-title" style="color:var(--danger)"><i class="ti ti-trash"></i> ยืนยันการลบ</div>
+      <button class="btn-close" onclick="closeModal('modalConfirm')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p id="confirmMsg" style="font-size:14px;line-height:1.6">คุณต้องการลบข้อมูลนี้ใช่หรือไม่?<br>การลบไม่สามารถยกเลิกได้</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modalConfirm')">ยกเลิก</button>
+      <button class="btn danger" id="confirmBtn" onclick="execConfirm()"><i class="ti ti-trash"></i> ลบ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-wrap" id="toastWrap"></div>
